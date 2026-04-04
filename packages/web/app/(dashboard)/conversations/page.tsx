@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Loader2, MessageSquare, ChevronRight, Trash2, ArrowLeft, User, Bot } from 'lucide-react';
+import { Loader2, MessageSquare, ChevronRight, Trash2, ArrowLeft, User, Bot, FileText, Image as ImageIcon, Music, Film, Paperclip } from 'lucide-react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { formatDateTime, cn } from '@/lib/utils';
@@ -74,6 +74,20 @@ function ConversationDetail({ id }: { id: string }) {
             <div className={cn('max-w-[75%] rounded-2xl px-4 py-2.5 text-sm',
               msg.role === 'user' ? 'bg-white border border-gray-200 text-gray-900' : 'bg-teal-500 text-white')}>
               <p className="whitespace-pre-wrap">{msg.content}</p>
+              {msg.metadata?.attachments?.map((att, i) => {
+                const isImage = att.contentType.startsWith('image/');
+                const isAudio = att.contentType.startsWith('audio/');
+                const isVideo = att.contentType.startsWith('video/');
+                const Icon = isImage ? ImageIcon : isAudio ? Music : isVideo ? Film : att.contentType === 'application/pdf' ? FileText : Paperclip;
+                return (
+                  <div key={i} className={cn('mt-2 flex items-center gap-2 rounded-lg px-3 py-2 text-xs',
+                    msg.role === 'user' ? 'bg-gray-50 text-gray-600' : 'bg-teal-600/50 text-teal-50')}>
+                    <Icon className="h-4 w-4 shrink-0" />
+                    <span className="truncate">{att.filename}</span>
+                    {att.size != null && <span className="shrink-0 opacity-60">{(att.size / 1024).toFixed(0)} KB</span>}
+                  </div>
+                );
+              })}
               <p className={cn('text-[10px] mt-1', msg.role === 'user' ? 'text-gray-400' : 'text-teal-100')}>
                 {formatDateTime(msg.createdAt)}
               </p>

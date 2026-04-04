@@ -57,7 +57,7 @@ async function downloadCdnMedia(
   contentType: string,
 ): Promise<string | null> {
   try {
-    const res = await fetch(cdnUrl, { signal: AbortSignal.timeout(30_000) });
+    const res = await fetch(cdnUrl, { signal: AbortSignal.timeout(120_000) });
     if (!res.ok) {
       console.error(`[weixin] CDN download failed: ${res.status}`);
       return null;
@@ -175,6 +175,76 @@ async function loginFlow(channelId: string): Promise<void> {
   }
 }
 
+// ── Message splitting ────────────────────────────────────────────────────────
+
+/**
+ * Split a long message into chunks that each stay under `maxWords` words.
+ * Splits on paragraph boundaries first (\n\n), then sentence boundaries (.!?),
+ * then single newlines as a last resort.
+ */
+function splitMessage(text: string, maxWords: number): string[] {
+  if (wordCount(text) <= maxWords) return [text];
+
+  // Split into paragraphs first
+  const paragraphs = text.split(/\n\n+/);
+  const chunks: string[] = [];
+  let current = '';
+
+  for (const para of paragraphs) {
+    const candidate = current ? `${current}\n\n${para}` : para;
+    if (wordCount(candidate) <= maxWords) {
+      current = candidate;
+    } else if (!current) {
+      // Single paragraph exceeds limit — split by sentences
+      chunks.push(...splitBySentences(para, maxWords));
+    } else {
+      chunks.push(current);
+      if (wordCount(para) <= maxWords) {
+        current = para;
+      } else {
+        chunks.push(...splitBySentences(para, maxWords));
+        current = '';
+      }
+    }
+  }
+  if (current) chunks.push(current);
+  return chunks;
+}
+
+function splitBySentences(text: string, maxWords: number): string[] {
+  // Split on sentence endings or newlines while keeping the delimiter
+  const sentences = text.split(/(?<=[.!?。！？\n])\s*/);
+  const chunks: string[] = [];
+  let current = '';
+
+  for (const sentence of sentences) {
+    const candidate = current ? `${current} ${sentence}` : sentence;
+    if (wordCount(candidate) <= maxWords) {
+      current = candidate;
+    } else if (!current) {
+      // Single sentence exceeds limit — just push it as-is
+      chunks.push(sentence);
+    } else {
+      chunks.push(current);
+      current = sentence;
+    }
+  }
+  if (current) chunks.push(current);
+  return chunks;
+}
+
+function wordCount(text: string): number {
+  // Count CJK characters individually + whitespace-separated words for mixed content
+  let count = 0;
+  // Each CJK character counts as ~1 word
+  const cjk = text.match(/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]/g);
+  if (cjk) count += cjk.length;
+  // Non-CJK portions: count whitespace-separated tokens
+  const nonCjk = text.replace(/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]/g, ' ').trim();
+  if (nonCjk) count += nonCjk.split(/\s+/).filter(Boolean).length;
+  return count;
+}
+
 // ── Message poll loop ─────────────────────────────────────────────────────────
 
 async function pollLoop(channelId: string, baseUrl: string, token: string): Promise<void> {
@@ -244,9 +314,15 @@ async function pollLoop(channelId: string, baseUrl: string, token: string): Prom
           5: { filename: 'video.mp4', contentType: 'video/mp4' },
         };
 
+        // Track whether we got a voice transcription so we can skip the audio attachment
+        const hasVoiceTranscription = msg.item_list?.some((i) => i.type === 3 && i.voice_item?.text?.trim()) ?? false;
+
         for (const item of msg.item_list ?? []) {
           const mediaMeta = MEDIA_MAP[item.type ?? 0];
           if (!mediaMeta) continue;
+
+          // Skip voice audio attachment when transcription is available — treat as text instead
+          if (item.type === 3 && hasVoiceTranscription) continue;
 
           const itemKey = item.type === 2 ? 'image_item' :
                           item.type === 3 ? 'voice_item' :
@@ -296,28 +372,31 @@ async function pollLoop(channelId: string, baseUrl: string, token: string): Prom
           });
 
           if (result?.reply) {
-            const sendBody = {
-              msg: {
-                from_user_id: '',
-                to_user_id: msg.from_user_id,
-                client_id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-                message_type: 2,
-                message_state: 2,
-                context_token: msg.context_token ?? '',
-                item_list: [{ type: 1, text_item: { text: result.reply } }],
-              },
-              base_info: { channel_version: '1.0.0' },
-            };
-            const sendBodyStr = JSON.stringify(sendBody);
-            console.log(`[weixin:${channelId}] Sending reply to ${msg.from_user_id}:`, sendBodyStr);
-            const sendRes = await fetch(`${baseUrl}/ilink/bot/sendmessage`, {
-              method: 'POST',
-              headers: msgHeaders(token, sendBodyStr),
-              body: sendBodyStr,
-              signal: AbortSignal.timeout(15_000),
-            });
-            const sendData = await sendRes.text();
-            console.log(`[weixin:${channelId}] sendmessage response (${sendRes.status}):`, sendData);
+            const chunks = splitMessage(result.reply, 600);
+            for (const chunk of chunks) {
+              const sendBody = {
+                msg: {
+                  from_user_id: '',
+                  to_user_id: msg.from_user_id,
+                  client_id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                  message_type: 2,
+                  message_state: 2,
+                  context_token: msg.context_token ?? '',
+                  item_list: [{ type: 1, text_item: { text: chunk } }],
+                },
+                base_info: { channel_version: '1.0.0' },
+              };
+              const sendBodyStr = JSON.stringify(sendBody);
+              console.log(`[weixin:${channelId}] Sending reply to ${msg.from_user_id}:`, sendBodyStr);
+              const sendRes = await fetch(`${baseUrl}/ilink/bot/sendmessage`, {
+                method: 'POST',
+                headers: msgHeaders(token, sendBodyStr),
+                body: sendBodyStr,
+                signal: AbortSignal.timeout(15_000),
+              });
+              const sendData = await sendRes.text();
+              console.log(`[weixin:${channelId}] sendmessage response (${sendRes.status}):`, sendData);
+            }
           } else {
             console.warn(`[weixin:${channelId}] No reply returned for message from ${msg.from_user_id}`);
           }

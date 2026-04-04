@@ -51,7 +51,7 @@ export const conversationsRouter = new Hono()
         messages: {
           orderBy: { createdAt: 'asc' },
           take: limit,
-          select: { id: true, role: true, content: true, createdAt: true },
+          select: { id: true, role: true, content: true, metadata: true, createdAt: true },
         },
       },
     });

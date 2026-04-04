@@ -108,7 +108,7 @@ export default function AiBackendsPage() {
           isDefault: form.isDefault, config: form.config,
         });
       }
-      if (!res.ok) { setFormError(res.error); return; }
+      if (!res.ok) { setFormError(typeof res.error === 'string' ? res.error : JSON.stringify(res.error)); return; }
       closeForm(); loadBackends();
     } finally { setSaving(false); }
   }

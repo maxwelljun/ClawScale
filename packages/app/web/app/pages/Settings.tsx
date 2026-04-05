@@ -22,6 +22,7 @@ export default function Settings() {
   const [siteTitle, setSiteTitle] = useState('');
   const [logoUrl, setLogoUrl] = useState('');
   const [endUserAccess, setEndUserAccess] = useState<TenantSettings['endUserAccess']>('anonymous');
+  const [clawscaleEnabled, setClawscaleEnabled] = useState(true);
   const [clawscaleModel, setClawscaleModel] = useState('openai:gpt-5.4-mini');
   const [clawscaleApiKey, setClawscaleApiKey] = useState('');
   const [apiKeySet, setApiKeySet] = useState(false);
@@ -31,6 +32,7 @@ export default function Settings() {
   const [rateLimitWindow, setRateLimitWindow] = useState(60);
   const [defaultHomePage, setDefaultHomePage] = useState('/dashboard');
   const [allowRegistration, setAllowRegistration] = useState(true);
+  const [backendLabels, setBackendLabels] = useState<'show' | 'hide' | 'force-hide'>('show');
 
   useEffect(() => {
     api.get<ApiResponse<Tenant>>('/api/tenant').then((res) => {
@@ -41,6 +43,7 @@ export default function Settings() {
         setSiteTitle(s.siteTitle ?? '');
         setLogoUrl(s.logoUrl ?? '');
         setEndUserAccess(s.endUserAccess ?? 'anonymous');
+        setClawscaleEnabled(s.clawscale?.isActive !== false);
         setClawscaleModel(s.clawscale?.llm?.model ?? 'openai:gpt-5.4-mini');
         setApiKeySet(!!s.clawscale?.llm?.apiKey && s.clawscale.llm.apiKey !== '');
         setClawscaleMultimodal(s.clawscale?.llm?.multimodal ?? false);
@@ -48,6 +51,7 @@ export default function Settings() {
         if (rl) { setRateLimitEnabled(true); setRateLimitMax(rl.maxMessages); setRateLimitWindow(rl.windowSeconds); }
         setDefaultHomePage(s.defaultHomePage ?? '/dashboard');
         setAllowRegistration(s.allowRegistration !== false);
+        setBackendLabels(s.backendLabels ?? 'show');
       }
       setLoading(false);
     });
@@ -63,8 +67,10 @@ export default function Settings() {
           logoUrl: logoUrl || null,
           defaultHomePage: defaultHomePage || null,
           allowRegistration,
+          backendLabels,
           endUserAccess,
           clawscale: {
+            isActive: clawscaleEnabled,
             llm: {
               model: clawscaleModel,
               ...(clawscaleApiKey ? { apiKey: clawscaleApiKey } : {}),
@@ -143,6 +149,14 @@ export default function Settings() {
           <h2 className="font-semibold text-gray-900 mb-1">ClawScale Setup Assistant</h2>
           <p className="text-sm text-gray-500 mb-4">Configure the built-in AI assistant that helps end-users navigate your bot.</p>
           <div className="space-y-4">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input type="checkbox" checked={clawscaleEnabled} onChange={(e) => setClawscaleEnabled(e.target.checked)} disabled={!isAdmin} className="mt-0.5" />
+              <span>
+                <span className="text-sm font-medium text-gray-900">Enable ClawScale assistant</span>
+                <span className="text-xs text-gray-500 block">When disabled, the AI assistant will not respond to any messages or commands. System commands like /team and /backends still work.</span>
+              </span>
+            </label>
+            {clawscaleEnabled && (<>
             <div>
               <label className="label">Model</label>
               <input className="input" placeholder="openai:gpt-5.4-mini" value={clawscaleModel} onChange={(e) => setClawscaleModel(e.target.value)} disabled={!isAdmin} />
@@ -179,6 +193,7 @@ export default function Settings() {
                 </div>
               </div>
             )}
+            </>)}
           </div>
         </div>
 
@@ -204,6 +219,34 @@ export default function Settings() {
                     {opt === 'whitelist' && 'Only users on the allow-list can interact.'}
                     {opt === 'blacklist' && 'Everyone except users on the block-list can interact.'}
                   </span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div className="card p-6">
+          <h2 className="font-semibold text-gray-900 mb-1">Backend Labels</h2>
+          <p className="text-sm text-gray-500 mb-4">Control whether the AI backend name (e.g. [GPT-4]) is shown in responses to end-users.</p>
+          <div className="space-y-2">
+            {([
+              ['show', 'Always show', 'Display [BackendName] prefix on every response.'],
+              ['hide', 'Hide by default', 'Labels are hidden but users can toggle them on.'],
+              ['force-hide', 'Always hide', 'Labels are always hidden. Users cannot override this.'],
+            ] as const).map(([value, label, desc]) => (
+              <label key={value} className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="radio"
+                  name="backendLabels"
+                  value={value}
+                  checked={backendLabels === value}
+                  onChange={() => setBackendLabels(value)}
+                  disabled={!isAdmin}
+                  className="mt-0.5"
+                />
+                <span>
+                  <span className="text-sm font-medium text-gray-900">{label}</span>
+                  <span className="text-xs text-gray-500 block">{desc}</span>
                 </span>
               </label>
             ))}

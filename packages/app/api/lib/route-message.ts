@@ -97,6 +97,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     allowList?: string[];
     clawscale?: { name?: string; answerStyle?: string; isActive?: boolean; rateLimit?: { maxMessages: number; windowSeconds: number }; llm?: AgentLlmConfig };
     blockList?: string[];
+    backendLabels?: 'show' | 'hide' | 'force-hide';
   };
 
   // 3. Find or create EndUser
@@ -159,6 +160,14 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
   const clawscaleLlm = clawscaleCfg.llm ?? { model: 'openai:gpt-5.4-mini' };
   const clawscaleRateLimit = clawscaleCfg.rateLimit;
 
+  // Resolve backend label visibility
+  const labelPolicy = settings.backendLabels ?? 'show';
+  const userMeta = (endUser.metadata ?? {}) as Record<string, unknown>;
+  const userHideLabels = userMeta.hideLabels as boolean | undefined;
+  const hideLabels = labelPolicy === 'force-hide'
+    || (labelPolicy === 'hide' && userHideLabels !== false)
+    || (labelPolicy === 'show' && userHideLabels === true);
+
   const allBackends = await db.aiBackend.findMany({
     where: { tenantId, isActive: true },
     orderBy: { createdAt: 'asc' },
@@ -219,16 +228,19 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
 
   // ── Helper closures ─────────────────────────────────────────────────
 
+  function formatCombined(entries: ReplyEntry[]): string {
+    return entries.map((r) =>
+      r.backendName && !hideLabels ? `[${r.backendName}]\n${r.reply}` : r.reply,
+    ).join('\n\n---\n\n');
+  }
+
   async function reply(content: string, backendId: string | null = null, backendName: string | null = clawscaleName): Promise<RouteResult> {
     replies.push({ backendId, backendName, reply: content });
     await db.message.create({
       data: { id: generateId('msg'), conversationId: conversation!.id, role: 'assistant', content, backendId },
     });
     await db.conversation.update({ where: { id: conversation!.id }, data: { updatedAt: new Date() } });
-    const combined = replies.map((r) =>
-      r.backendName ? `[${r.backendName}]\n${r.reply}` : r.reply,
-    ).join('\n\n---\n\n');
-    return { conversationId: conversation!.id, replies, reply: combined };
+    return { conversationId: conversation!.id, replies, reply: formatCombined(replies) };
   }
 
   async function addBackend(backendId: string) {
@@ -295,10 +307,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
       }
     }
     await db.conversation.update({ where: { id: conversation!.id }, data: { updatedAt: new Date() } });
-    const combined = replies.map((r) =>
-      r.backendName ? `[${r.backendName}]\n${r.reply}` : r.reply,
-    ).join('\n\n---\n\n');
-    return { conversationId: conversation!.id, replies, reply: combined };
+    return { conversationId: conversation!.id, replies, reply: formatCombined(replies) };
   }
 
   // 8. Parse commands
@@ -505,6 +514,28 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
           return reply(`*Linked accounts:*\n\n${lines.join('\n')}`);
         }
 
+        case 'labels': {
+          const labelPolicy = settings.backendLabels ?? 'show';
+          if (labelPolicy === 'force-hide') {
+            return reply('Backend labels are disabled by the admin and cannot be changed.');
+          }
+          // Toggle the user's preference stored in endUser.metadata
+          const userMeta = (endUser!.metadata ?? {}) as Record<string, unknown>;
+          const currentPref = userMeta.hideLabels as boolean | undefined;
+          // Default depends on policy: 'show' → labels visible, 'hide' → labels hidden
+          const defaultHidden = labelPolicy === 'hide';
+          const currentlyHidden = currentPref ?? defaultHidden;
+          const newHidden = !currentlyHidden;
+          await db.endUser.update({
+            where: { id: endUser!.id },
+            data: { metadata: { ...userMeta, hideLabels: newHidden } },
+          });
+          return reply(newHidden
+            ? '✅ Backend labels are now *hidden* in responses. Use `/labels` to show them again.'
+            : '✅ Backend labels are now *visible* in responses. Use `/labels` to hide them again.',
+          );
+        }
+
         case 'deleteaccount': {
           if (cmd.arg.toLowerCase() !== 'confirm') {
             return reply(
@@ -595,6 +626,12 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
       return reply(menuReply);
     }
     return result;
+  }
+
+  // Assistant disabled, no active backends — show available backends or a nudge
+  if (allBackends.length > 0) {
+    const list = allBackends.map((b, i) => `${i + 1}. ${b.name}`).join('\n');
+    return reply(`Use \`/team invite <name|#>\` to add an agent:\n\n${list}`);
   }
 
   return null;

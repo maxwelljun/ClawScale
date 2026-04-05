@@ -19,7 +19,7 @@
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type CommandType = 'backends' | 'clear' | 'team' | 'help' | 'link' | 'unlink' | 'linked' | 'deleteaccount';
+export type CommandType = 'backends' | 'clear' | 'team' | 'help' | 'link' | 'unlink' | 'linked' | 'deleteaccount' | 'labels';
 
 export interface SystemCommand {
   kind: 'system';
@@ -40,7 +40,7 @@ export type ParsedCommand = SystemCommand | DirectMessage;
 
 // ── Parser ────────────────────────────────────────────────────────────────────
 
-const SYSTEM_COMMANDS = new Set<CommandType>(['backends', 'clear', 'team', 'help', 'link', 'unlink', 'linked', 'deleteaccount']);
+const SYSTEM_COMMANDS = new Set<CommandType>(['backends', 'clear', 'team', 'help', 'link', 'unlink', 'linked', 'deleteaccount', 'labels']);
 
 /**
  * Parse user text for commands.
@@ -99,6 +99,7 @@ export const COMMAND_REFERENCE = [
   { command: '/link <code>', description: 'link this channel to another using a code' },
   { command: '/unlink', description: 'remove the link from this channel' },
   { command: '/linked', description: 'show all linked accounts and channels' },
+  { command: '/labels', description: 'toggle backend name labels on or off in responses' },
   { command: '/deleteaccount', description: 'permanently delete your account and all data' },
   { command: '/help', description: 'show all commands' },
 ] as const;

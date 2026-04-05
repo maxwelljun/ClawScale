@@ -77,6 +77,13 @@ export interface TenantSettings {
   defaultHomePage?: string;
   /** Whether new users can register and join this project (default: true) */
   allowRegistration?: boolean;
+  /**
+   * Backend name label policy for end-user responses.
+   * - show: always display [BackendName] prefix (default)
+   * - hide: hide by default, user can toggle on
+   * - force-hide: always hidden, user cannot override
+   */
+  backendLabels?: 'show' | 'hide' | 'force-hide';
 }
 
 export type AiBackendType = 'llm' | 'openclaw' | 'palmos'  | 'claude-code' | 'custom' | 'cli-bridge';

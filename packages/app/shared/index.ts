@@ -19,6 +19,13 @@ export interface ClawScaleAgentSettings {
   answerStyle?: string;
   /** Whether the orchestrator responds at all (default: true) */
   isActive?: boolean;
+  /** Per-user rate limiting for the assistant */
+  rateLimit?: {
+    /** Maximum messages allowed per window (0 = unlimited) */
+    maxMessages: number;
+    /** Window duration in seconds (default: 60) */
+    windowSeconds: number;
+  };
   /** LLM configuration for the ClawScale agent */
   llm?: {
     /** LangChain model string, e.g. "openai:gpt-5.4-mini", "anthropic:claude-haiku-4-5-20251001" */

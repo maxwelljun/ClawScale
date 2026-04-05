@@ -19,6 +19,33 @@ import type { AgentLlmConfig } from './clawscale-agent.js';
 import { parseCommand, resolveTarget, resolveAddRemoveArg, formatCommandHelp } from './slash-commands.js';
 import type { AiBackendType, AiBackendProviderConfig } from '../../shared/index.js';
 
+// ── Per-user rate limiter (in-memory) ────────────────────────────────────────
+
+interface RateBucket {
+  count: number;
+  resetAt: number;
+}
+
+/** Key: `${tenantId}:${endUserId}` */
+const rateBuckets = new Map<string, RateBucket>();
+
+function isRateLimited(
+  tenantId: string,
+  endUserId: string,
+  limit: { maxMessages: number; windowSeconds: number },
+): boolean {
+  if (limit.maxMessages <= 0) return false; // 0 = unlimited
+  const key = `${tenantId}:${endUserId}`;
+  const now = Date.now();
+  const bucket = rateBuckets.get(key);
+  if (!bucket || now >= bucket.resetAt) {
+    rateBuckets.set(key, { count: 1, resetAt: now + limit.windowSeconds * 1000 });
+    return false;
+  }
+  bucket.count++;
+  return bucket.count > limit.maxMessages;
+}
+
 export interface Attachment {
   url: string;
   filename: string;
@@ -68,7 +95,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     personaName?: string;
     endUserAccess?: 'anonymous' | 'whitelist' | 'blacklist';
     allowList?: string[];
-    clawscale?: { name?: string; answerStyle?: string; isActive?: boolean; llm?: AgentLlmConfig };
+    clawscale?: { name?: string; answerStyle?: string; isActive?: boolean; rateLimit?: { maxMessages: number; windowSeconds: number }; llm?: AgentLlmConfig };
     blockList?: string[];
   };
 
@@ -130,6 +157,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
   const clawscaleStyle = clawscaleCfg.answerStyle;
   const clawscaleActive = clawscaleCfg.isActive !== false;
   const clawscaleLlm = clawscaleCfg.llm ?? { model: 'openai:gpt-5.4-mini' };
+  const clawscaleRateLimit = clawscaleCfg.rateLimit;
 
   const allBackends = await db.aiBackend.findMany({
     where: { tenantId, isActive: true },
@@ -145,6 +173,14 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
    * Slash commands are executed via a callback that re-enters routeInboundMessage.
    */
   async function runAgent(userText: string, mode: 'select' | 'direct'): Promise<RouteResult> {
+    // Rate limit check
+    if (clawscaleRateLimit && isRateLimited(tenantId, endUser!.id, clawscaleRateLimit)) {
+      const mins = Math.ceil(clawscaleRateLimit.windowSeconds / 60);
+      return reply(
+        `⏳ You've reached the message limit (${clawscaleRateLimit.maxMessages} per ${mins === 1 ? 'minute' : `${mins} minutes`}). Please wait a moment before sending another message.`,
+      );
+    }
+
     // If attachments are present but multimodal is not enabled, nudge the admin
     if (attachments?.length && !clawscaleLlm?.multimodal) {
       return reply(

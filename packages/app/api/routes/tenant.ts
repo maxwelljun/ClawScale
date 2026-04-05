@@ -9,6 +9,7 @@ const updateSettingsSchema = z.object({
   name: z.string().min(2).max(80).optional(),
   settings: z
     .object({
+      siteTitle:     z.string().max(100).optional(),
       personaName:   z.string().min(1).max(80).optional(),
       personaPrompt: z.string().max(4000).optional(),
       endUserAccess: z.enum(['anonymous', 'whitelist', 'blacklist']).optional(),
@@ -26,6 +27,7 @@ const updateSettingsSchema = z.object({
           multimodal: z.boolean().optional(),
         }).nullable().optional(),
       }).optional(),
+      defaultHomePage: z.string().max(100).nullable().optional(),
       onboarding: z.object({
         headline:    z.string().max(200).optional(),
         subtitle:    z.string().max(400).optional(),
@@ -59,6 +61,10 @@ tenantRouter.patch('/', requireAdmin, validate(updateSettingsSchema), async (req
   if (body.settings != null) {
     const { clawscale, onboarding, ...flatSettings } = body.settings;
     updatedSettings = { ...updatedSettings, ...flatSettings };
+    // Remove flat keys explicitly set to null
+    for (const [key, val] of Object.entries(flatSettings)) {
+      if (val === null) delete updatedSettings[key];
+    }
     if (onboarding !== undefined) {
       const existingOb = (updatedSettings.onboarding as Record<string, unknown>) ?? {};
       updatedSettings.onboarding = { ...existingOb, ...onboarding };

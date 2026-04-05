@@ -1,4 +1,3 @@
-'use client';
 import { useEffect, useState, useRef } from 'react';
 import { Plus, Loader2, Plug, PlugZap, Trash2, Radio, Pencil, Check, X, Copy, Settings } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -32,7 +31,6 @@ export default function Channels() {
   const [adding, setAdding] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-  // WhatsApp QR modal
   const [qrChannelId, setQrChannelId] = useState<string | null>(null);
   const [qrImage, setQrImage] = useState<string | null>(null);
   const [qrUrl, setQrUrl] = useState<string | null>(null);
@@ -47,7 +45,6 @@ export default function Channels() {
 
   useEffect(() => { void load(); }, []);
 
-  // Poll QR endpoint while modal is open
   useEffect(() => {
     if (!qrChannelId) {
       if (qrPollRef.current) { clearInterval(qrPollRef.current); qrPollRef.current = null; }
@@ -118,7 +115,6 @@ export default function Channels() {
     if (res.ok) setChannels((prev) => prev.filter((c) => c.id !== id));
   }
 
-  // Inline rename
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const editRef = useRef<HTMLInputElement>(null);
@@ -137,7 +133,6 @@ export default function Channels() {
     setEditingId(null);
   }
 
-  // Edit channel modal
   const [editChannelId, setEditChannelId] = useState<string | null>(null);
   const [editChannelType, setEditChannelType] = useState<ChannelType>('whatsapp');
   const [editChannelName, setEditChannelName] = useState('');
@@ -188,7 +183,7 @@ export default function Channels() {
   const schema = CHANNEL_CONFIG_SCHEMA[addType];
   const editSchema = CHANNEL_CONFIG_SCHEMA[editChannelType];
 
-  const apiBase = process.env['NEXT_PUBLIC_API_URL'] ?? '';
+  const apiBase = '';
 
   return (
     <div className="p-8">
@@ -200,7 +195,6 @@ export default function Channels() {
         {isAdmin && <button className="btn-primary" onClick={() => setShowAdd(true)}><Plus className="h-4 w-4" /> Add channel</button>}
       </div>
 
-      {/* Add channel modal */}
       {showAdd && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
           <div className="card w-full max-w-md p-6">
@@ -243,7 +237,6 @@ export default function Channels() {
         </div>
       )}
 
-      {/* WhatsApp QR modal */}
       {qrChannelId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
           <div className="card w-full max-w-sm p-6 text-center">
@@ -280,7 +273,6 @@ export default function Channels() {
         </div>
       )}
 
-      {/* Edit channel modal */}
       {editChannelId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
           <div className="card w-full max-w-md p-6">
@@ -397,8 +389,6 @@ export default function Channels() {
     </div>
   );
 }
-
-// ── WhatsApp Business webhook setup instructions ─────────────────────────────
 
 function WebhookToggle({ channelId, apiBase }: { channelId: string; apiBase: string }) {
   const webhookUrl = `${apiBase}/gateway/whatsapp/${channelId}`;

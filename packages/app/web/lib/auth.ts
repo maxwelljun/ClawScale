@@ -26,6 +26,10 @@ export function getUser(): PublicUser | null {
   try { return JSON.parse(raw) as PublicUser; } catch { return null; }
 }
 
+export function storeTenant(tenant: Tenant): void {
+  localStorage.setItem(TENANT_KEY, JSON.stringify(tenant));
+}
+
 export function getTenant(): Tenant | null {
   const raw = localStorage.getItem(TENANT_KEY);
   if (!raw) return null;

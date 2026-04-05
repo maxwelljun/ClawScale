@@ -1,4 +1,3 @@
-'use client';
 import { useEffect, useState } from 'react';
 import { Loader2, Plus, Pencil, Trash2, X, Save, BotMessageSquare, Star, StarOff, Lock } from 'lucide-react';
 import { api } from '@/lib/api';

@@ -1,4 +1,3 @@
-'use client';
 import { useEffect, useState } from 'react';
 import { UserPlus, Loader2, Trash2, Shield, Eye, User } from 'lucide-react';
 import { api } from '@/lib/api';

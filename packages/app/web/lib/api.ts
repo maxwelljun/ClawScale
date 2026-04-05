@@ -1,4 +1,4 @@
-const BASE = process.env['NEXT_PUBLIC_API_URL'] ?? '';
+const BASE = '';
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const token = localStorage.getItem('cs_token');

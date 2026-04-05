@@ -12,12 +12,16 @@ export default function Register() {
   const [loading, setLoading] = useState(false);
   const [hasProject, setHasProject] = useState<boolean | null>(null);
   const [projectName, setProjectName] = useState('');
+  const [registrationDisabled, setRegistrationDisabled] = useState(false);
 
   useEffect(() => {
-    api.get<ApiResponse<{ hasProject: boolean; projectName: string | null }>>('/auth/status').then((res) => {
+    api.get<ApiResponse<{ hasProject: boolean; projectName: string | null; allowRegistration: boolean }>>('/auth/status').then((res) => {
       if (res.ok) {
         setHasProject(res.data.hasProject);
         setProjectName(res.data.projectName ?? '');
+        if (res.data.hasProject && !res.data.allowRegistration) {
+          setRegistrationDisabled(true);
+        }
       }
     });
   }, []);
@@ -61,6 +65,16 @@ export default function Register() {
         </div>
 
         <div className="card p-8">
+          {registrationDisabled ? (
+            <>
+              <h1 className="text-xl font-semibold text-gray-900 mb-1">Registration closed</h1>
+              <p className="text-sm text-gray-500 mb-6">
+                New account registration is currently disabled for {projectName || 'this project'}. Please contact an administrator if you need access.
+              </p>
+              <Link to="/login" className="btn-primary w-full inline-flex items-center justify-center">Sign in instead</Link>
+            </>
+          ) : (
+          <>
           <h1 className="text-xl font-semibold text-gray-900 mb-1">
             {hasProject ? `Join ${projectName}` : 'Create your project'}
           </h1>
@@ -109,6 +123,8 @@ export default function Register() {
             Already have an account?{' '}
             <Link to="/login" className="text-teal-600 hover:underline font-medium">Sign in</Link>
           </p>
+          </>
+          )}
         </div>
 
         <p className="mt-4 text-center text-xs text-white/30">Free forever for up to 5 users. No credit card required.</p>

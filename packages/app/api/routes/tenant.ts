@@ -28,6 +28,7 @@ const updateSettingsSchema = z.object({
         }).nullable().optional(),
       }).optional(),
       defaultHomePage: z.string().max(100).nullable().optional(),
+      allowRegistration: z.boolean().optional(),
       onboarding: z.object({
         headline:    z.string().max(200).optional(),
         subtitle:    z.string().max(400).optional(),

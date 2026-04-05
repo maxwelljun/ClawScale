@@ -33,6 +33,7 @@ const defaultSettings: TenantSettings = {
   personaPrompt: 'You are a helpful assistant.',
   endUserAccess: 'anonymous',
   features: { knowledgeBase: false },
+  allowRegistration: true,
 };
 
 const memberSelect = {
@@ -53,6 +54,15 @@ authRouter.post('/register', validate(registerSchema), async (req, res) => {
 
   // Check if a project already exists
   const existingTenant = await db.tenant.findFirst();
+
+  // If a project exists, check whether registration is open
+  if (existingTenant) {
+    const s = existingTenant.settings as TenantSettings | null;
+    if (s?.allowRegistration === false) {
+      res.status(403).json({ ok: false, error: 'Registration is currently disabled' });
+      return;
+    }
+  }
 
   // Check for duplicate email across all members
   const emailTaken = await db.member.findFirst({ where: { email: body.email.toLowerCase() } });
@@ -133,8 +143,10 @@ authRouter.post('/register', validate(registerSchema), async (req, res) => {
 
 // ── GET /auth/status — public check whether a project exists ─────────────────
 authRouter.get('/status', async (_req, res) => {
-  const tenant = await db.tenant.findFirst({ select: { name: true } });
-  res.json({ ok: true, data: { hasProject: !!tenant, projectName: tenant?.name ?? null } });
+  const tenant = await db.tenant.findFirst({ select: { name: true, settings: true } });
+  const settings = tenant?.settings as TenantSettings | null;
+  const allowRegistration = settings?.allowRegistration !== false;
+  res.json({ ok: true, data: { hasProject: !!tenant, projectName: tenant?.name ?? null, allowRegistration } });
 });
 
 // ── POST /auth/login ─────────────────────────────────────────────────────────

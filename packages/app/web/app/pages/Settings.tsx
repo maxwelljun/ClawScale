@@ -29,6 +29,7 @@ export default function Settings() {
   const [rateLimitMax, setRateLimitMax] = useState(20);
   const [rateLimitWindow, setRateLimitWindow] = useState(60);
   const [defaultHomePage, setDefaultHomePage] = useState('/dashboard');
+  const [allowRegistration, setAllowRegistration] = useState(true);
 
   useEffect(() => {
     api.get<ApiResponse<Tenant>>('/api/tenant').then((res) => {
@@ -44,6 +45,7 @@ export default function Settings() {
         const rl = s.clawscale?.rateLimit;
         if (rl) { setRateLimitEnabled(true); setRateLimitMax(rl.maxMessages); setRateLimitWindow(rl.windowSeconds); }
         setDefaultHomePage(s.defaultHomePage ?? '/dashboard');
+        setAllowRegistration(s.allowRegistration !== false);
       }
       setLoading(false);
     });
@@ -57,6 +59,7 @@ export default function Settings() {
         settings: {
           siteTitle: siteTitle || undefined,
           defaultHomePage: defaultHomePage || null,
+          allowRegistration,
           endUserAccess,
           clawscale: {
             llm: {
@@ -113,6 +116,13 @@ export default function Settings() {
               </select>
               <p className="text-xs text-gray-400 mt-1">The page visitors see when they navigate to the root URL.</p>
             </div>
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input type="checkbox" checked={allowRegistration} onChange={(e) => setAllowRegistration(e.target.checked)} disabled={!isAdmin} className="mt-0.5" />
+              <span>
+                <span className="text-sm font-medium text-gray-900">Allow new user registration</span>
+                <span className="text-xs text-gray-500 block">When disabled, only existing members can sign in. New users cannot create accounts.</span>
+              </span>
+            </label>
           </div>
         </div>
 

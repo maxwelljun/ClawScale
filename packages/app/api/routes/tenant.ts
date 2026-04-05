@@ -30,6 +30,7 @@ const updateSettingsSchema = z.object({
       }).optional(),
       defaultHomePage: z.string().max(100).nullable().optional(),
       allowRegistration: z.boolean().optional(),
+      backendLabels: z.enum(['show', 'hide', 'force-hide']).optional(),
       onboarding: z.object({
         headline:    z.string().max(200).optional(),
         subtitle:    z.string().max(400).optional(),

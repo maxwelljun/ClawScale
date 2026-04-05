@@ -11,7 +11,8 @@
     "test": "pnpm -r test",
     "db:push": "pnpm --filter @clawscale/app db:push",
     "db:migrate": "pnpm --filter @clawscale/app db:migrate",
-    "db:studio": "pnpm --filter @clawscale/app db:studio"
+    "db:studio": "pnpm --filter @clawscale/app db:studio",
+    "start": "pnpm --parallel -r --filter \"!@clawscale/cli-bridge\" start"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",

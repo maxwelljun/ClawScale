@@ -11,3 +11,4 @@ packages/web/dist
 packages/*/dist
 drizzle/
 .claude/
+coverage/

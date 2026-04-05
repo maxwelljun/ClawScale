@@ -5,12 +5,13 @@
   "description": "OpenClaw, unlocked for your whole team — multi-tenant workspace layer",
   "scripts": {
     "dev": "pnpm --parallel -r --filter \"!@clawscale/cli-bridge\" dev",
+    "dev:web": "pnpm --filter @clawscale/app dev:web",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
-    "db:push": "pnpm --filter @clawscale/api db:push",
-    "db:migrate": "pnpm --filter @clawscale/api db:migrate",
-    "db:studio": "pnpm --filter @clawscale/api db:studio"
+    "db:push": "pnpm --filter @clawscale/app db:push",
+    "db:migrate": "pnpm --filter @clawscale/app db:migrate",
+    "db:studio": "pnpm --filter @clawscale/app db:studio"
   },
   "devDependencies": {
     "typescript": "^6.0.2"
@@ -19,7 +20,5 @@
     "node": ">=20.0.0",
     "pnpm": ">=9.0.0"
   },
-  "dependencies": {
-    "serve": "^14.2.6"
-  }
+  "dependencies": {}
 }

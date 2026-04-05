@@ -69,11 +69,6 @@ app.use("/gateway", (_req, res) => {
   res.status(404).json({ ok: false, error: "Not found" });
 });
 
-app.get("/test", async (req, res) => {
-  // return "ok" if the API is working, otherwise return an error
-  res.json({ ok: true, data: "ok123" });
-});
-
 // ─── Frontend serving ────────────────────────────────────────────────────────
 
 const isDev = process.env.NODE_ENV !== "production";

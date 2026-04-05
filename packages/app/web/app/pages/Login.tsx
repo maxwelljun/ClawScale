@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -11,6 +11,13 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [logoUrl, setLogoUrl] = useState('/logo.png');
+
+  useEffect(() => {
+    api.get<ApiResponse<{ hasProject: boolean; projectName: string | null; allowRegistration: boolean; logoUrl: string | null }>>('/auth/status').then((res) => {
+      if (res.ok && res.data.logoUrl) setLogoUrl(res.data.logoUrl);
+    });
+  }, []);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault(); setError(''); setLoading(true);
@@ -26,7 +33,7 @@ export default function Login() {
     <div className="flex min-h-screen items-center justify-center bg-navy-950 px-4">
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-2.5 mb-8">
-          <img src="/logo.png" alt="ClawScale" width={32} height={32} className="h-8 w-8" />
+          <img src={logoUrl} alt="ClawScale" width={32} height={32} className="h-8 w-8 rounded object-cover" />
           <span className="text-2xl font-semibold text-white">ClawScale</span>
         </div>
 

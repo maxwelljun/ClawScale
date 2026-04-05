@@ -3,6 +3,7 @@ import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { LayoutDashboard, Users, UserCheck, Radio, Settings, LogOut, MessageSquare, BotMessageSquare, Globe } from 'lucide-react';
 import { isAuthenticated, clearAuth, getUser, getTenant } from '@/lib/auth';
 import { cn } from '@/lib/utils';
+import type { TenantSettings } from '@clawscale/shared';
 
 const navItems: { href: string; icon: typeof LayoutDashboard; label: string; exact?: boolean }[] = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', exact: true },
@@ -26,7 +27,12 @@ export default function DashboardLayout() {
     } else {
       setReady(true);
       const t = getTenant();
-      if (t) document.title = t.settings?.siteTitle || `${t.name} — ClawScale`;
+      if (t) {
+        const s = t.settings as TenantSettings | undefined;
+        document.title = s?.siteTitle || `${t.name} — ClawScale`;
+        const favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+        if (favicon) favicon.href = s?.logoUrl || '/logo.png';
+      }
     }
   }, [navigate]);
 
@@ -34,6 +40,8 @@ export default function DashboardLayout() {
 
   const user = getUser();
   const tenant = getTenant();
+  const tenantSettings = tenant?.settings as TenantSettings | undefined;
+  const projectLogo = tenantSettings?.logoUrl || '/logo.png';
 
   function handleLogout() {
     clearAuth();
@@ -44,7 +52,7 @@ export default function DashboardLayout() {
     <div className="flex h-screen bg-gray-50">
       <aside className="flex w-60 flex-col bg-navy-900 text-white">
         <Link to="/" className="flex items-center gap-2.5 px-5 py-5 border-b border-white/10">
-          <img src="/logo.png" alt="ClawScale" width={28} height={28} className="h-7 w-7" />
+          <img src={projectLogo} alt="ClawScale" width={28} height={28} className="h-7 w-7 rounded object-cover" />
           <div>
             <span className="font-semibold text-white text-base">ClawScale</span>
             <p className="text-[10px] text-white/40 leading-none mt-0.5">by ClayPulse</p>

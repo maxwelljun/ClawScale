@@ -24,14 +24,11 @@ services:
         condition: service_healthy
     ports:
       - "4040:4040"
-      - "4041:4041"
     environment:
       DATABASE_URL: postgresql://clawscale:clawscale@db:5432/clawscale
       JWT_SECRET: ${JWT_SECRET:-change-me-to-a-long-random-string-in-production}
       HOST: 0.0.0.0
-      PORT: 4041
-      CORS_ORIGIN: http://localhost:4040
-      NEXT_PUBLIC_API_URL: http://localhost:4041
+      PORT: 4040
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     env_file:
       - path: .env

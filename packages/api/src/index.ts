@@ -1,6 +1,7 @@
 import 'dotenv/config';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import express from 'express';
-import cors from 'cors';
 import morgan from 'morgan';
 import { authRouter } from './routes/auth.js';
 import { usersRouter } from './routes/users.js';
@@ -28,14 +29,6 @@ const app = express();
 
 // ─── Global middleware ────────────────────────────────────────────────────────
 
-app.use(
-  cors({
-    origin: process.env['CORS_ORIGIN'] ?? 'http://localhost:4040',
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-    credentials: true,
-  }),
-);
 app.use(morgan('dev'));
 app.use(express.json());
 
@@ -61,10 +54,28 @@ app.use('/api/onboard', onboardRouter);
 
 app.use('/gateway', gatewayRouter);
 
+// ─── Static file serving (production) ────────────────────────────────────────
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const webRoot = path.resolve(__dirname, '../../web/out');
+app.use(express.static(webRoot));
+
 // ─── Fallback ─────────────────────────────────────────────────────────────────
 
-app.use((_req, res) => {
+// API/gateway 404
+app.use('/api', (_req, res) => {
   res.status(404).json({ ok: false, error: 'Not found' });
+});
+app.use('/auth', (_req, res) => {
+  res.status(404).json({ ok: false, error: 'Not found' });
+});
+app.use('/gateway', (_req, res) => {
+  res.status(404).json({ ok: false, error: 'Not found' });
+});
+
+// SPA fallback — serve index.html for all other routes
+app.use((_req, res) => {
+  res.sendFile(path.join(webRoot, 'index.html'));
 });
 
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
@@ -74,7 +85,7 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 
 // ─── Start server ─────────────────────────────────────────────────────────────
 
-const port = parseInt(process.env['PORT'] ?? '4041', 10);
+const port = parseInt(process.env['PORT'] ?? '4040', 10);
 const host = process.env['HOST'] ?? '0.0.0.0';
 
 const server = app.listen(port, host, () => {

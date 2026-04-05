@@ -1,6 +1,5 @@
-'use client';
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
+import { Link } from 'react-router-dom';
 import { MessageSquare, Radio, ArrowRight, Users, Bot, UserCheck } from 'lucide-react';
 import { api } from '@/lib/api';
 import { getTenant } from '@/lib/auth';
@@ -82,7 +81,7 @@ function StatCard({ icon, label, value, sub }: {
 
 function QuickCard({ to, title, desc, icon }: { to: string; title: string; desc: string; icon: React.ReactNode }) {
   return (
-    <Link href={to} className="card p-5 hover:border-teal-300 hover:shadow-md transition-all group">
+    <Link to={to} className="card p-5 hover:border-teal-300 hover:shadow-md transition-all group">
       <div className="flex items-center justify-between mb-3">
         <div className="rounded-lg bg-navy-900/5 p-2 text-navy-900">{icon}</div>
         <ArrowRight className="h-4 w-4 text-gray-300 group-hover:text-teal-500 transition-colors" />

@@ -1,5 +1,4 @@
-<!-- BEGIN:nextjs-agent-rules -->
-# This is NOT the Next.js you know
+# Web App
 
-This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
-<!-- END:nextjs-agent-rules -->
+Vite + React SPA with React Router for routing and Tailwind CSS v4 for styling.
+Express serves the built static files from `web/dist` in production.

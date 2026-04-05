@@ -1,8 +1,5 @@
-'use client';
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
-import { useRouter, usePathname } from 'next/navigation';
-import Image from 'next/image';
+import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { LayoutDashboard, Users, UserCheck, Radio, Settings, LogOut, MessageSquare, BotMessageSquare, Globe } from 'lucide-react';
 import { isAuthenticated, clearAuth, getUser, getTenant } from '@/lib/auth';
 import { cn } from '@/lib/utils';
@@ -18,18 +15,20 @@ const navItems: { href: string; icon: typeof LayoutDashboard; label: string; exa
   { href: '/settings', icon: Settings, label: 'Settings' },
 ];
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
-  const pathname = usePathname();
+export default function DashboardLayout() {
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated()) {
-      router.replace('/login');
+      navigate('/login', { replace: true });
     } else {
       setReady(true);
+      const t = getTenant();
+      if (t) document.title = t.settings?.siteTitle || `${t.name} — ClawScale`;
     }
-  }, [router]);
+  }, [navigate]);
 
   if (!ready) return null;
 
@@ -38,14 +37,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   function handleLogout() {
     clearAuth();
-    router.push('/login');
+    navigate('/login');
   }
 
   return (
     <div className="flex h-screen bg-gray-50">
       <aside className="flex w-60 flex-col bg-navy-900 text-white">
         <div className="flex items-center gap-2.5 px-5 py-5 border-b border-white/10">
-          <Image src="/logo.png" alt="ClawScale" width={28} height={28} className="h-7 w-7" />
+          <img src="/logo.png" alt="ClawScale" width={28} height={28} className="h-7 w-7" />
           <div>
             <span className="font-semibold text-white text-base">ClawScale</span>
             <p className="text-[10px] text-white/40 leading-none mt-0.5">by Pulse</p>
@@ -64,7 +63,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             return (
               <Link
                 key={href}
-                href={href}
+                to={href}
                 className={cn(
                   'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
                   isActive
@@ -95,7 +94,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </aside>
 
-      <main className="flex-1 overflow-y-auto">{children}</main>
+      <main className="flex-1 overflow-y-auto">
+        <Outlet />
+      </main>
     </div>
   );
 }

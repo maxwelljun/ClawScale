@@ -1,15 +1,12 @@
-'use client';
 import { useState, type FormEvent } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import Image from 'next/image';
+import { Link, useNavigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { storeAuth } from '@/lib/auth';
 import type { ApiResponse, AuthResult } from '@clawscale/shared';
 
 export default function Login() {
-  const router = useRouter();
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -21,7 +18,7 @@ export default function Login() {
       const res = await api.post<ApiResponse<AuthResult>>('/auth/login', { email, password });
       if (!res.ok) { setError(res.error); return; }
       storeAuth(res.data);
-      router.push('/');
+      navigate('/');
     } finally { setLoading(false); }
   }
 
@@ -29,7 +26,7 @@ export default function Login() {
     <div className="flex min-h-screen items-center justify-center bg-navy-950 px-4">
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-2.5 mb-8">
-          <Image src="/logo.png" alt="ClawScale" width={32} height={32} className="h-8 w-8" />
+          <img src="/logo.png" alt="ClawScale" width={32} height={32} className="h-8 w-8" />
           <span className="text-2xl font-semibold text-white">ClawScale</span>
         </div>
 
@@ -57,7 +54,7 @@ export default function Login() {
 
           <p className="mt-6 text-center text-sm text-gray-500">
             No project yet?{' '}
-            <Link href="/register" className="text-teal-600 hover:underline font-medium">Create one free</Link>
+            <Link to="/register" className="text-teal-600 hover:underline font-medium">Create one free</Link>
           </p>
         </div>
       </div>

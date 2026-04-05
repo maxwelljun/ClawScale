@@ -1,7 +1,5 @@
-'use client';
-
-import { useSearchParams } from 'next/navigation';
-import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 /* ─── Types ─── */
 
@@ -56,7 +54,6 @@ function getMeta(type: string) {
   return CHANNEL_META[type] ?? { label: type, icon: '💬', color: '#6B7280', connectLabel: 'Connect' };
 }
 
-/** Build self-service instructions based on what info is available */
 function getInstructions(channel: ChannelInfo): string {
   const type = channel.type;
   const hasUrl = !!channel.connectUrl;
@@ -207,7 +204,6 @@ function QrConnectCard({ type, label, accent, apiBase, onConnected }: {
         onConnected();
         return;
       }
-      // Start polling for QR
       const channelId = result.data.channelId;
       pollForQr(channelId);
     } catch {
@@ -329,30 +325,15 @@ function QrConnectCard({ type, label, accent, apiBase, onConnected }: {
 /* ─── Main page ─── */
 
 export default function OnboardPage() {
-  return (
-    <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="flex items-center gap-3">
-          <div className="w-5 h-5 rounded-full border-2 border-teal-500 border-t-transparent animate-spin" />
-          <p className="text-gray-500">Loading channels...</p>
-        </div>
-      </div>
-    }>
-      <OnboardContent />
-    </Suspense>
-  );
-}
-
-function OnboardContent() {
-  const params = useSearchParams();
-  const palmosUserId = params.get('palmosUserId');
-  const selectedChannel = params.get('channel');
+  const [searchParams] = useSearchParams();
+  const palmosUserId = searchParams.get('palmosUserId');
+  const selectedChannel = searchParams.get('channel');
 
   const [data, setData] = useState<OnboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const apiBase = process.env['NEXT_PUBLIC_API_URL'] ?? '';
+  const apiBase = '';
 
   const loadData = useCallback(() => {
     fetch(`${apiBase}/api/onboard/channels`)
@@ -402,13 +383,11 @@ function OnboardContent() {
     ? `Set up ${getMeta(selectedChannel).label} to start chatting.`
     : 'Choose a messaging platform to connect with your AI assistant.');
 
-  // Only admin-provisioned connected channels (exclude self-service types — those use QR cards)
   const USER_PROVISIONED = new Set(['whatsapp', 'wechat_personal']);
   const connectedChannels = data.channels
     .filter((ch) => !USER_PROVISIONED.has(ch.type))
     .filter((ch) => !selectedChannel || ch.type === selectedChannel);
 
-  // Self-service channels — always available, each user creates their own connection
   const selfServiceTypes = (data.userProvisionedTypes ?? [])
     .filter((up) => !selectedChannel || up.type === selectedChannel);
 
@@ -416,7 +395,6 @@ function OnboardContent() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* ── Header ── */}
       <header className="pt-12 pb-8 px-4">
         <div className="max-w-2xl mx-auto text-center">
           <div className="mb-5 flex justify-center">
@@ -463,7 +441,6 @@ function OnboardContent() {
         </div>
       </main>
 
-      {/* ── Footer ── */}
       <footer className="py-6 text-center">
         <a
           href="https://clawscale.org"

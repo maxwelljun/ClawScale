@@ -57,14 +57,8 @@ app.use('/api/onboard', onboardRouter);
 
 app.use('/gateway', gatewayRouter);
 
-// ─── Static file serving (production) ────────────────────────────────────────
+// ─── API/gateway 404 ─────────────────────────────────────────────────────────
 
-const webRoot = path.resolve(process.cwd(), 'web', 'out');
-app.use(express.static(webRoot));
-
-// ─── Fallback ─────────────────────────────────────────────────────────────────
-
-// API/gateway 404
 app.use('/api', (_req, res) => {
   res.status(404).json({ ok: false, error: 'Not found' });
 });
@@ -75,10 +69,26 @@ app.use('/gateway', (_req, res) => {
   res.status(404).json({ ok: false, error: 'Not found' });
 });
 
-// SPA fallback — serve index.html for all other routes
-app.use((_req, res) => {
-  res.sendFile(path.join(webRoot, 'index.html'));
-});
+// ─── Frontend serving ────────────────────────────────────────────────────────
+
+const isDev = process.env.NODE_ENV !== 'production';
+const webRoot = path.resolve(process.cwd(), 'web/dist');
+
+if (isDev) {
+  // Embed Vite dev server with HMR directly into Express
+  const { createServer: createViteServer } = await import('vite');
+  const vite = await createViteServer({
+    configFile: path.resolve(process.cwd(), 'web/vite.config.ts'),
+    server: { middlewareMode: true },
+  });
+  app.use(vite.middlewares);
+} else {
+  // Production: serve the static build
+  app.use(express.static(webRoot));
+  app.use((_req, res) => {
+    res.sendFile(path.join(webRoot, 'index.html'));
+  });
+}
 
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error(err);

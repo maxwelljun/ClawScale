@@ -9,6 +9,7 @@ const updateSettingsSchema = z.object({
   name: z.string().min(2).max(80).optional(),
   settings: z
     .object({
+      siteTitle:     z.string().max(100).optional(),
       personaName:   z.string().min(1).max(80).optional(),
       personaPrompt: z.string().max(4000).optional(),
       endUserAccess: z.enum(['anonymous', 'whitelist', 'blacklist']).optional(),

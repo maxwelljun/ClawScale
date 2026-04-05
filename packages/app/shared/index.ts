@@ -49,6 +49,8 @@ export interface OnboardingBranding {
 }
 
 export interface TenantSettings {
+  /** Custom browser tab title (falls back to tenant name if not set) */
+  siteTitle?: string;
   /** Display name for the AI persona shown to end-users */
   personaName: string;
   /** System prompt that defines the bot's behaviour */

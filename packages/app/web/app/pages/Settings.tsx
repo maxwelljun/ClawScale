@@ -1,13 +1,12 @@
-'use client';
 import { useEffect, useState } from 'react';
 import { Loader2, Save, Trash2 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { useNavigate } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { getUser, clearAuth } from '@/lib/auth';
 import type { ApiResponse, Tenant, TenantSettings } from '@clawscale/shared';
 
 export default function Settings() {
-  const router = useRouter();
+  const navigate = useNavigate();
   const me = getUser();
   const isAdmin = me?.role === 'admin';
   const [tenant, setTenant] = useState<Tenant | null>(null);
@@ -18,6 +17,7 @@ export default function Settings() {
   const [deleting, setDeleting] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState('');
   const [name, setName] = useState('');
+  const [siteTitle, setSiteTitle] = useState('');
   const [endUserAccess, setEndUserAccess] = useState<TenantSettings['endUserAccess']>('anonymous');
   const [clawscaleModel, setClawscaleModel] = useState('openai:gpt-5.4-mini');
   const [clawscaleApiKey, setClawscaleApiKey] = useState('');
@@ -33,6 +33,7 @@ export default function Settings() {
         const t = res.data;
         setTenant(t); setName(t.name);
         const s = t.settings as TenantSettings;
+        setSiteTitle(s.siteTitle ?? '');
         setEndUserAccess(s.endUserAccess ?? 'anonymous');
         setClawscaleModel(s.clawscale?.llm?.model ?? 'openai:gpt-5.4-mini');
         setApiKeySet(!!s.clawscale?.llm?.apiKey && s.clawscale.llm.apiKey !== '');
@@ -50,6 +51,7 @@ export default function Settings() {
       const res = await api.patch<ApiResponse<Tenant>>('/api/tenant', {
         name,
         settings: {
+          siteTitle: siteTitle || undefined,
           endUserAccess,
           clawscale: {
             llm: {
@@ -63,6 +65,8 @@ export default function Settings() {
       });
       if (!res.ok) { setError(res.error); return; }
       setTenant(res.data); setSuccess(true);
+      const s = res.data.settings as TenantSettings;
+      document.title = s.siteTitle || `${res.data.name} — ClawScale`;
       setTimeout(() => setSuccess(false), 3000);
     } finally { setSaving(false); }
   }
@@ -89,6 +93,11 @@ export default function Settings() {
             <div>
               <label className="label">Project name</label>
               <input className="input" value={name} onChange={(e) => setName(e.target.value)} disabled={!isAdmin} required />
+            </div>
+            <div>
+              <label className="label">Browser tab title</label>
+              <input className="input" value={siteTitle} onChange={(e) => setSiteTitle(e.target.value)} disabled={!isAdmin} placeholder={`${name || 'Project'} — ClawScale`} />
+              <p className="text-xs text-gray-400 mt-1">Custom title for the browser tab. Leave blank to use the default.</p>
             </div>
           </div>
         </div>
@@ -202,7 +211,7 @@ export default function Settings() {
                   const res = await api.delete<ApiResponse<null>>('/auth/account');
                   if (!res.ok) { setError(res.error); return; }
                   clearAuth();
-                  router.push('/login');
+                  navigate('/login');
                 } finally { setDeleting(false); }
               }}
             >

@@ -71,6 +71,8 @@ export interface TenantSettings {
   clawscale?: ClawScaleAgentSettings;
   /** Onboarding portal branding (consumer-facing page) */
   onboarding?: OnboardingBranding;
+  /** Override the default landing page for the root URL (e.g. "/onboard") */
+  defaultHomePage?: string;
 }
 
 export type AiBackendType = 'llm' | 'openclaw' | 'palmos'  | 'claude-code' | 'custom' | 'cli-bridge';

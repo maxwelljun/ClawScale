@@ -5,7 +5,7 @@ import { isAuthenticated, clearAuth, getUser, getTenant } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 
 const navItems: { href: string; icon: typeof LayoutDashboard; label: string; exact?: boolean }[] = [
-  { href: '/', icon: LayoutDashboard, label: 'Dashboard', exact: true },
+  { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', exact: true },
   { href: '/conversations', icon: MessageSquare, label: 'Conversations' },
   { href: '/channels', icon: Radio, label: 'Channels' },
   { href: '/ai-backends', icon: BotMessageSquare, label: 'AI Backends' },
@@ -43,13 +43,13 @@ export default function DashboardLayout() {
   return (
     <div className="flex h-screen bg-gray-50">
       <aside className="flex w-60 flex-col bg-navy-900 text-white">
-        <div className="flex items-center gap-2.5 px-5 py-5 border-b border-white/10">
+        <Link to="/" className="flex items-center gap-2.5 px-5 py-5 border-b border-white/10">
           <img src="/logo.png" alt="ClawScale" width={28} height={28} className="h-7 w-7" />
           <div>
             <span className="font-semibold text-white text-base">ClawScale</span>
-            <p className="text-[10px] text-white/40 leading-none mt-0.5">by Pulse</p>
+            <p className="text-[10px] text-white/40 leading-none mt-0.5">by ClayPulse</p>
           </div>
-        </div>
+        </Link>
 
         {tenant && (
           <div className="mx-4 mt-4 rounded-lg bg-white/5 px-3 py-2">

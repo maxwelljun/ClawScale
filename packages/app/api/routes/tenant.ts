@@ -27,6 +27,7 @@ const updateSettingsSchema = z.object({
           multimodal: z.boolean().optional(),
         }).nullable().optional(),
       }).optional(),
+      defaultHomePage: z.string().max(100).nullable().optional(),
       onboarding: z.object({
         headline:    z.string().max(200).optional(),
         subtitle:    z.string().max(400).optional(),
@@ -60,6 +61,10 @@ tenantRouter.patch('/', requireAdmin, validate(updateSettingsSchema), async (req
   if (body.settings != null) {
     const { clawscale, onboarding, ...flatSettings } = body.settings;
     updatedSettings = { ...updatedSettings, ...flatSettings };
+    // Remove flat keys explicitly set to null
+    for (const [key, val] of Object.entries(flatSettings)) {
+      if (val === null) delete updatedSettings[key];
+    }
     if (onboarding !== undefined) {
       const existingOb = (updatedSettings.onboarding as Record<string, unknown>) ?? {};
       updatedSettings.onboarding = { ...existingOb, ...onboarding };

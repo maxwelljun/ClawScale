@@ -26,6 +26,7 @@ export default function Settings() {
   const [rateLimitEnabled, setRateLimitEnabled] = useState(false);
   const [rateLimitMax, setRateLimitMax] = useState(20);
   const [rateLimitWindow, setRateLimitWindow] = useState(60);
+  const [defaultHomePage, setDefaultHomePage] = useState('/dashboard');
 
   useEffect(() => {
     api.get<ApiResponse<Tenant>>('/api/tenant').then((res) => {
@@ -40,6 +41,7 @@ export default function Settings() {
         setClawscaleMultimodal(s.clawscale?.llm?.multimodal ?? false);
         const rl = s.clawscale?.rateLimit;
         if (rl) { setRateLimitEnabled(true); setRateLimitMax(rl.maxMessages); setRateLimitWindow(rl.windowSeconds); }
+        setDefaultHomePage(s.defaultHomePage ?? '/dashboard');
       }
       setLoading(false);
     });
@@ -52,6 +54,7 @@ export default function Settings() {
         name,
         settings: {
           siteTitle: siteTitle || undefined,
+          defaultHomePage: defaultHomePage || null,
           endUserAccess,
           clawscale: {
             llm: {
@@ -99,6 +102,14 @@ export default function Settings() {
               <label className="label">Browser tab title</label>
               <input className="input" value={siteTitle} onChange={(e) => setSiteTitle(e.target.value)} disabled={!isAdmin} placeholder={`${name || 'Project'} — ClawScale`} />
               <p className="text-xs text-gray-400 mt-1">Custom title for the browser tab. Leave blank to use the default.</p>
+            </div>
+            <div>
+              <label className="label">Default home page</label>
+              <select className="input" value={defaultHomePage} onChange={(e) => setDefaultHomePage(e.target.value)} disabled={!isAdmin}>
+                <option value="/dashboard">Dashboard (default)</option>
+                <option value="/onboard">Onboard</option>
+              </select>
+              <p className="text-xs text-gray-400 mt-1">The page visitors see when they navigate to the root URL.</p>
             </div>
           </div>
         </div>

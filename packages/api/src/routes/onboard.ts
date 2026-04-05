@@ -1,26 +1,26 @@
 import { Hono } from 'hono';
 import { db } from '../db/index.js';
+import type { TenantSettings, OnboardingBranding } from '@clawscale/shared';
 
 const onboardRouter = new Hono();
 
 /**
- * GET /api/onboard/channels?tenantSlug=xxx
- * Public endpoint — returns active channels with their public connect info.
+ * GET /api/onboard/channels
+ * Public endpoint — returns active channels for the project
+ * plus onboarding branding settings.
+ * Single-project deployment: fetches the first (only) tenant.
  */
 onboardRouter.get('/channels', async (c) => {
-  const tenantSlug = c.req.query('tenantSlug');
-  if (!tenantSlug) {
-    return c.json({ error: 'tenantSlug is required' }, 400);
-  }
-
-  const tenant = await db.tenant.findUnique({
-    where: { slug: tenantSlug },
-    select: { id: true, name: true },
+  const tenant = await db.tenant.findFirst({
+    select: { id: true, name: true, settings: true },
   });
 
   if (!tenant) {
-    return c.json({ error: 'Tenant not found' }, 404);
+    return c.json({ error: 'No project configured' }, 404);
   }
+
+  const settings = (tenant.settings ?? {}) as unknown as TenantSettings;
+  const branding: OnboardingBranding = settings.onboarding ?? {};
 
   const channels = await db.channel.findMany({
     where: { tenantId: tenant.id, status: 'connected' },
@@ -40,10 +40,16 @@ onboardRouter.get('/channels', async (c) => {
       type: ch.type,
       name: ch.name,
       connectUrl: cfg.connectUrl ?? cfg.botInviteUrl ?? cfg.botLink ?? null,
+      phoneNumber: cfg.publicPhoneNumber ?? cfg.phoneNumber ?? null,
+      qrAvailable: ch.type === 'wechat_personal',
     };
   });
 
-  return c.json({ tenantName: tenant.name, channels: publicChannels });
+  return c.json({
+    tenantName: tenant.name,
+    branding,
+    channels: publicChannels,
+  });
 });
 
 export { onboardRouter };

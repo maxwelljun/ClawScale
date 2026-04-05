@@ -35,7 +35,7 @@ export default function Login() {
 
         <div className="card p-8">
           <h1 className="text-xl font-semibold text-gray-900 mb-1">Sign in</h1>
-          <p className="text-sm text-gray-500 mb-6">Welcome back to your workspace.</p>
+          <p className="text-sm text-gray-500 mb-6">Welcome back to your project.</p>
 
           {error && <div className="mb-4 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-600">{error}</div>}
 
@@ -56,7 +56,7 @@ export default function Login() {
           </form>
 
           <p className="mt-6 text-center text-sm text-gray-500">
-            No workspace yet?{' '}
+            No project yet?{' '}
             <Link href="/register" className="text-teal-600 hover:underline font-medium">Create one free</Link>
           </p>
         </div>

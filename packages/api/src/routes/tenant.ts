@@ -22,6 +22,12 @@ const updateSettingsSchema = z.object({
           multimodal: z.boolean().optional(),
         }).nullable().optional(),
       }).optional(),
+      onboarding: z.object({
+        headline:    z.string().max(200).optional(),
+        subtitle:    z.string().max(400).optional(),
+        logoUrl:     z.string().max(500).optional(),
+        accentColor: z.string().max(20).optional(),
+      }).optional(),
     })
     .optional(),
 });
@@ -47,8 +53,12 @@ export const tenantRouter = new Hono()
 
     let updatedSettings = current.settings as Record<string, unknown>;
     if (body.settings != null) {
-      const { clawscale, ...flatSettings } = body.settings;
+      const { clawscale, onboarding, ...flatSettings } = body.settings;
       updatedSettings = { ...updatedSettings, ...flatSettings };
+      if (onboarding !== undefined) {
+        const existingOb = (updatedSettings.onboarding as Record<string, unknown>) ?? {};
+        updatedSettings.onboarding = { ...existingOb, ...onboarding };
+      }
       if (clawscale !== undefined) {
         const existing = (updatedSettings.clawscale as Record<string, unknown>) ?? {};
         const merged = { ...existing, ...clawscale };

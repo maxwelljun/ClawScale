@@ -58,8 +58,8 @@ export default function Users() {
     <div className="p-8">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Team</h1>
-          <p className="text-gray-500 mt-1">Manage members and their access.</p>
+          <h1 className="text-2xl font-semibold text-gray-900">Members</h1>
+          <p className="text-gray-500 mt-1">Manage project admins, developers, and viewers who can access the dashboard.</p>
         </div>
         {me?.role === 'admin' && (
           <button className="btn-primary" onClick={() => setShowInvite(true)}>

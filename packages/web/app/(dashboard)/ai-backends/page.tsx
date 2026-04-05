@@ -205,7 +205,7 @@ export default function AiBackendsPage() {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-medium text-gray-900">{clawscale.name || 'ClawScale Assistant'}</span>
+                  <span className="font-medium text-gray-900">{clawscale.name || 'ClawScale Setup Assistant'}</span>
                   <span className="text-xs px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200 font-medium">Built-in</span>
                   {clawscale.isActive === false && (
                     <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">Disabled</span>
@@ -295,7 +295,7 @@ export default function AiBackendsPage() {
 
               <div>
                 <label className="label">Display name</label>
-                <input className="input" placeholder="ClawScale Assistant" value={clawscaleForm.name ?? ''}
+                <input className="input" placeholder="ClawScale Setup Assistant" value={clawscaleForm.name ?? ''}
                   onChange={(e) => setClawscaleForm((f) => ({ ...f, name: e.target.value }))} />
               </div>
 
@@ -358,6 +358,19 @@ export default function AiBackendsPage() {
                   onChange={(e) => setClawscaleForm((f) => ({ ...f, isActive: e.target.checked }))}
                   className="h-4 w-4 rounded border-gray-300 text-teal-500" />
                 Active (responds to users before a backend is selected)
+              </label>
+
+              <label className="flex items-start gap-2 text-sm text-gray-700 cursor-pointer">
+                <input type="checkbox" checked={clawscaleForm.llm?.multimodal ?? false}
+                  onChange={(e) => setClawscaleForm((f) => ({
+                    ...f,
+                    llm: { ...f.llm, model: f.llm?.model ?? 'openai:gpt-5.4-mini', multimodal: e.target.checked },
+                  }))}
+                  className="h-4 w-4 rounded border-gray-300 text-teal-500 mt-0.5" />
+                <span>
+                  <span className="font-medium text-gray-900">Enable multimodal input</span>
+                  <span className="text-xs text-gray-500 block">Allow the assistant to process images, files, and audio. Requires a vision-capable model (e.g. GPT-4o, Claude Sonnet).</span>
+                </span>
               </label>
 
               {clawscaleError && <p className="text-sm text-red-600">{clawscaleError}</p>}

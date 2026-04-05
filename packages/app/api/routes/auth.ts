@@ -15,8 +15,9 @@ const registerSchema = z.object({
     .string()
     .min(3)
     .max(48)
-    .regex(/^[a-z0-9-]+$/, 'Slug must be lowercase letters, numbers, and hyphens only'),
-  tenantName: z.string().min(2).max(80),
+    .regex(/^[a-z0-9-]+$/, 'Slug must be lowercase letters, numbers, and hyphens only')
+    .optional(),
+  tenantName: z.string().min(2).max(80).optional(),
   name: z.string().min(1).max(80),
   email: z.string().email(),
   password: z.string().min(8),
@@ -32,6 +33,7 @@ const defaultSettings: TenantSettings = {
   personaPrompt: 'You are a helpful assistant.',
   endUserAccess: 'anonymous',
   features: { knowledgeBase: false },
+  allowRegistration: true,
 };
 
 const memberSelect = {
@@ -50,40 +52,79 @@ export const authRouter = Router();
 authRouter.post('/register', validate(registerSchema), async (req, res) => {
   const body = req.body;
 
-  const slug = (slugify as any)(body.tenantSlug, { lower: true, strict: true }) as string;
+  // Check if a project already exists
+  const existingTenant = await db.tenant.findFirst();
 
-  const existing = await db.tenant.findUnique({ where: { slug } });
-  if (existing) {
-    res.status(409).json({ ok: false, error: 'Workspace slug is already taken' });
+  // If a project exists, check whether registration is open
+  if (existingTenant) {
+    const s = existingTenant.settings as TenantSettings | null;
+    if (s?.allowRegistration === false) {
+      res.status(403).json({ ok: false, error: 'Registration is currently disabled' });
+      return;
+    }
+  }
+
+  // Check for duplicate email across all members
+  const emailTaken = await db.member.findFirst({ where: { email: body.email.toLowerCase() } });
+  if (emailTaken) {
+    res.status(409).json({ ok: false, error: 'An account with this email already exists' });
     return;
   }
 
-  const tenantId = generateId('tnt');
   const memberId = generateId('mbr');
   const passwordHash = await hashPassword(body.password);
 
-  await db.$transaction(async (tx) => {
-    await tx.tenant.create({
-      data: {
-        id: tenantId,
-        slug,
-        name: body.tenantName,
-        settings: defaultSettings as object,
-      },
-    });
-    await tx.member.create({
+  let tenantId: string;
+  let role: 'admin' | 'member';
+
+  if (existingTenant) {
+    // Join existing project as a regular member
+    tenantId = existingTenant.id;
+    role = 'member';
+
+    await db.member.create({
       data: {
         id: memberId,
         tenantId,
         email: body.email.toLowerCase(),
         name: body.name,
         passwordHash,
-        role: 'admin',
+        role,
       },
     });
-  });
+  } else {
+    // First user — create the project and become admin
+    if (!body.tenantSlug || !body.tenantName) {
+      res.status(400).json({ ok: false, error: 'Project name and URL are required for initial setup' });
+      return;
+    }
+    tenantId = generateId('tnt');
+    role = 'admin';
+    const slug = (slugify as any)(body.tenantSlug, { lower: true, strict: true }) as string;
 
-  const token = signToken({ sub: memberId, tid: tenantId, role: 'admin' });
+    await db.$transaction(async (tx) => {
+      await tx.tenant.create({
+        data: {
+          id: tenantId,
+          slug,
+          name: body.tenantName,
+          settings: defaultSettings as object,
+        },
+      });
+      await tx.member.create({
+        data: {
+          id: memberId,
+          tenantId,
+          email: body.email.toLowerCase(),
+          name: body.name,
+          passwordHash,
+          role,
+        },
+      });
+    });
+  }
+
+  const token = signToken({ sub: memberId, tid: tenantId, role });
 
   await audit({ tenantId, memberId, action: 'register', resource: 'tenant', resourceId: tenantId });
 
@@ -98,6 +139,14 @@ authRouter.post('/register', validate(registerSchema), async (req, res) => {
       tenant,
     },
   });
+});
+
+// ── GET /auth/status — public check whether a project exists ─────────────────
+authRouter.get('/status', async (_req, res) => {
+  const tenant = await db.tenant.findFirst({ select: { name: true, settings: true } });
+  const settings = tenant?.settings as TenantSettings | null;
+  const allowRegistration = settings?.allowRegistration !== false;
+  res.json({ ok: true, data: { hasProject: !!tenant, projectName: tenant?.name ?? null, allowRegistration } });
 });
 
 // ── POST /auth/login ─────────────────────────────────────────────────────────

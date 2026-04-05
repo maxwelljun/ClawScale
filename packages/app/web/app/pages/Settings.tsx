@@ -16,6 +16,8 @@ export default function Settings() {
   const [error, setError] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState('');
+  const [deletingProject, setDeletingProject] = useState(false);
+  const [deleteProjectConfirm, setDeleteProjectConfirm] = useState('');
   const [name, setName] = useState('');
   const [siteTitle, setSiteTitle] = useState('');
   const [endUserAccess, setEndUserAccess] = useState<TenantSettings['endUserAccess']>('anonymous');
@@ -27,6 +29,7 @@ export default function Settings() {
   const [rateLimitMax, setRateLimitMax] = useState(20);
   const [rateLimitWindow, setRateLimitWindow] = useState(60);
   const [defaultHomePage, setDefaultHomePage] = useState('/dashboard');
+  const [allowRegistration, setAllowRegistration] = useState(true);
 
   useEffect(() => {
     api.get<ApiResponse<Tenant>>('/api/tenant').then((res) => {
@@ -42,6 +45,7 @@ export default function Settings() {
         const rl = s.clawscale?.rateLimit;
         if (rl) { setRateLimitEnabled(true); setRateLimitMax(rl.maxMessages); setRateLimitWindow(rl.windowSeconds); }
         setDefaultHomePage(s.defaultHomePage ?? '/dashboard');
+        setAllowRegistration(s.allowRegistration !== false);
       }
       setLoading(false);
     });
@@ -55,6 +59,7 @@ export default function Settings() {
         settings: {
           siteTitle: siteTitle || undefined,
           defaultHomePage: defaultHomePage || null,
+          allowRegistration,
           endUserAccess,
           clawscale: {
             llm: {
@@ -111,6 +116,13 @@ export default function Settings() {
               </select>
               <p className="text-xs text-gray-400 mt-1">The page visitors see when they navigate to the root URL.</p>
             </div>
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input type="checkbox" checked={allowRegistration} onChange={(e) => setAllowRegistration(e.target.checked)} disabled={!isAdmin} className="mt-0.5" />
+              <span>
+                <span className="text-sm font-medium text-gray-900">Allow new user registration</span>
+                <span className="text-xs text-gray-500 block">When disabled, only existing members can sign in. New users cannot create accounts.</span>
+              </span>
+            </label>
           </div>
         </div>
 
@@ -196,42 +208,85 @@ export default function Settings() {
         )}
       </form>
 
-      <div className="mt-10 border-t border-red-200 pt-8">
+      <div className="mt-10 border-t border-red-200 pt-8 space-y-6">
         <div className="card border-red-200 p-6">
           <h2 className="font-semibold text-red-700 mb-1">Danger Zone</h2>
-          <p className="text-sm text-gray-500 mb-4">
-            Permanently delete your account. This removes your member profile and logs you out. This action cannot be undone.
-          </p>
-          <div className="space-y-3">
+
+          <div className="space-y-6">
             <div>
-              <label className="label text-red-700">Type &quot;delete my account&quot; to confirm</label>
-              <input
-                className="input border-red-300 focus:border-red-500 focus:ring-red-500"
-                placeholder="delete my account"
-                value={deleteConfirm}
-                onChange={(e) => setDeleteConfirm(e.target.value)}
-              />
+              <p className="text-sm text-gray-500 mb-3">
+                Permanently delete your account. This removes your member profile and logs you out.
+              </p>
+              <div className="space-y-3">
+                <div>
+                  <label className="label text-red-700">Type &quot;delete my account&quot; to confirm</label>
+                  <input
+                    className="input border-red-300 focus:border-red-500 focus:ring-red-500"
+                    placeholder="delete my account"
+                    value={deleteConfirm}
+                    onChange={(e) => setDeleteConfirm(e.target.value)}
+                  />
+                </div>
+                <button
+                  type="button"
+                  disabled={deleteConfirm !== 'delete my account' || deleting}
+                  className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={async () => {
+                    setDeleting(true);
+                    setError('');
+                    try {
+                      const res = await api.delete<ApiResponse<null>>('/auth/account');
+                      if (!res.ok) { setError(res.error); return; }
+                      clearAuth();
+                      navigate('/login');
+                    } finally { setDeleting(false); }
+                  }}
+                >
+                  {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                  Delete my account
+                </button>
+              </div>
             </div>
-            <button
-              type="button"
-              disabled={deleteConfirm !== 'delete my account' || deleting}
-              className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              onClick={async () => {
-                setDeleting(true);
-                setError('');
-                try {
-                  const res = await api.delete<ApiResponse<null>>('/auth/account');
-                  if (!res.ok) { setError(res.error); return; }
-                  clearAuth();
-                  navigate('/login');
-                } finally { setDeleting(false); }
-              }}
-            >
-              {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-              Delete my account
-            </button>
-            {error && <p className="text-sm text-red-600">{error}</p>}
+
+            {isAdmin && (
+              <div className="border-t border-red-200 pt-6">
+                <p className="text-sm text-gray-500 mb-3">
+                  Permanently delete the entire project. This removes all members, conversations, channels, AI backends, and data. <strong>This cannot be undone.</strong>
+                </p>
+                <div className="space-y-3">
+                  <div>
+                    <label className="label text-red-700">Type &quot;delete project&quot; to confirm</label>
+                    <input
+                      className="input border-red-300 focus:border-red-500 focus:ring-red-500"
+                      placeholder="delete project"
+                      value={deleteProjectConfirm}
+                      onChange={(e) => setDeleteProjectConfirm(e.target.value)}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    disabled={deleteProjectConfirm !== 'delete project' || deletingProject}
+                    className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={async () => {
+                      setDeletingProject(true);
+                      setError('');
+                      try {
+                        const res = await api.delete<ApiResponse<null>>('/api/tenant');
+                        if (!res.ok) { setError(res.error); return; }
+                        clearAuth();
+                        navigate('/register');
+                      } finally { setDeletingProject(false); }
+                    }}
+                  >
+                    {deletingProject ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                    Delete project
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
+
+          {error && <p className="text-sm text-red-600 mt-3">{error}</p>}
         </div>
       </div>
     </div>

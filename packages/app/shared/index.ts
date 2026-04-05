@@ -73,6 +73,8 @@ export interface TenantSettings {
   onboarding?: OnboardingBranding;
   /** Override the default landing page for the root URL (e.g. "/onboard") */
   defaultHomePage?: string;
+  /** Whether new users can register and join this project (default: true) */
+  allowRegistration?: boolean;
 }
 
 export type AiBackendType = 'llm' | 'openclaw' | 'palmos'  | 'claude-code' | 'custom' | 'cli-bridge';

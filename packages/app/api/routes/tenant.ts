@@ -28,6 +28,7 @@ const updateSettingsSchema = z.object({
         }).nullable().optional(),
       }).optional(),
       defaultHomePage: z.string().max(100).nullable().optional(),
+      allowRegistration: z.boolean().optional(),
       onboarding: z.object({
         headline:    z.string().max(200).optional(),
         subtitle:    z.string().max(400).optional(),
@@ -96,6 +97,13 @@ tenantRouter.patch('/', requireAdmin, validate(updateSettingsSchema), async (req
 
   const updated = await db.tenant.findUnique({ where: { id: tenantId } });
   res.json({ ok: true, data: maskTenantSecrets(updated) });
+});
+
+// ── DELETE /api/tenant ──────────────────────────────────────────────────────
+tenantRouter.delete('/', requireAdmin, async (req, res) => {
+  const { tenantId } = req.auth!;
+  await db.tenant.delete({ where: { id: tenantId } });
+  res.json({ ok: true, data: null });
 });
 
 // ── GET /api/tenant/audit ────────────────────────────────────────────────────

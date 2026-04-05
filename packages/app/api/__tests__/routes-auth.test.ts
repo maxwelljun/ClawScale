@@ -2,16 +2,20 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import express from 'express';
 
 // vi.mock factories must not reference outer variables — use inline object
-vi.mock('../db/index.js', () => ({
-  db: {
-    tenant: { findUnique: vi.fn(), create: vi.fn() },
-    member: { findFirst: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn(), count: vi.fn() },
-    auditLog: { create: vi.fn() },
-    $transaction: vi.fn(async (fn: any) => {
-      await fn({ tenant: { create: vi.fn() }, member: { create: vi.fn() } });
-    }),
-  },
-}));
+vi.mock('../db/index.js', () => {
+  const tenantCreate = vi.fn();
+  const memberCreate = vi.fn();
+  return {
+    db: {
+      tenant: { findUnique: vi.fn(), findFirst: vi.fn(), create: tenantCreate },
+      member: { findFirst: vi.fn(), findUnique: vi.fn(), create: memberCreate, update: vi.fn(), delete: vi.fn(), count: vi.fn() },
+      auditLog: { create: vi.fn() },
+      $transaction: vi.fn(async (fn: any) => {
+        await fn({ tenant: { create: tenantCreate }, member: { create: memberCreate } });
+      }),
+    },
+  };
+});
 
 import { db } from '../db/index.js';
 import { authRouter } from '../routes/auth.js';
@@ -54,18 +58,20 @@ describe('POST /auth/register', () => {
     expect(body.ok).toBe(false);
   });
 
-  it('returns 409 when slug already taken', async () => {
-    mockDb.tenant.findUnique.mockResolvedValue({ id: 'existing' } as any);
+  it('returns 409 when email already taken', async () => {
+    (mockDb.tenant as any).findFirst.mockResolvedValue(null);
+    mockDb.member.findFirst.mockResolvedValue({ id: 'existing', email: 'admin@example.com' } as any);
     const { status, body } = await req(buildApp(), 'POST', '/auth/register', {
       body: { tenantSlug: 'taken', tenantName: 'Taken Corp', name: 'Admin', email: 'admin@example.com', password: 'password123' },
     });
     expect(status).toBe(409);
-    expect(body.error).toContain('already taken');
+    expect(body.error).toContain('email already exists');
   });
 
   it('registers successfully', async () => {
-    mockDb.tenant.findUnique.mockResolvedValueOnce(null as any); // slug check
-    mockDb.tenant.findUnique.mockResolvedValueOnce({ id: 'tnt_1', slug: 'acme', name: 'Acme' } as any);
+    (mockDb.tenant as any).findFirst.mockResolvedValue(null); // no existing project
+    mockDb.member.findFirst.mockResolvedValue(null as any); // no duplicate email
+    mockDb.tenant.findUnique.mockResolvedValue({ id: 'tnt_1', slug: 'acme', name: 'Acme' } as any);
     mockDb.member.findUnique.mockResolvedValue({ id: 'mbr_1', tenantId: 'tnt_1', email: 'a@b.com', name: 'A', role: 'admin', createdAt: new Date() } as any);
     mockDb.auditLog.create.mockResolvedValue({} as any);
 

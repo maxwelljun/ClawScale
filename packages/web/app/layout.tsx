@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "ClawScale",
-  description: "Multi-tenant OpenClaw workspace",
+  description: "ClawScale — multi-user, multi-agent IM chatbot gateway",
   icons: { icon: "/logo.png" },
 };
 

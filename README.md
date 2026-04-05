@@ -3,17 +3,20 @@
 </p>
 
 <h1 align="center">ClawScale</h1>
-<p align="center"><strong>Connect your AI agents to any messaging platform</strong></p>
+<p align="center"><strong>The easiest way to deploy AI chatbots to every messaging platform — at scale</strong></p>
 <p align="center">English | <a href="README.zh-CN.md">中文</a></p>
 
-ClawScale is an open-source gateway that connects AI agents — OpenClaw, Claude Code, LLMs, or any custom agent — to WhatsApp, Discord, Slack, Telegram, and 10+ other messaging platforms. It handles multi-tenant isolation, conversation routing, and backend orchestration so hundreds of users can talk to your agents without interfering with each other.
+ClawScale is the fastest, simplest way to set up AI-powered chatbots across WhatsApp, Discord, Slack, Telegram, and 14+ instant messaging platforms. Connect any AI backend — OpenClaw, Claude, GPT, or your own models — and go live in minutes, not weeks. Multi-tenant isolation means hundreds or thousands of users can chat simultaneously without interfering with each other. No boilerplate, no infrastructure headaches — just plug in your credentials, pick your AI, and hit **Connect**.
 
-## What can you do with ClawScale?
+## Why teams choose ClawScale
 
-- **Deploy AI agents to messaging platforms** — connect any LLM or AI agent to WhatsApp, Discord, Slack, Telegram, Teams, and more from a single dashboard
-- **Support many users at once** — each user gets isolated conversations, memory, and state. No cross-contamination between users
-- **Mix and match AI backends** — run OpenClaw, GPT, Claude, self-hosted models, or all of them at once. Users can talk to multiple agents in the same chat
-- **Manage everything from a dashboard** — channels, backends, users, roles, and audit logs in one place
+- **Go live in minutes** — add a channel, paste your credentials, and your AI chatbot is live. No custom code, webhooks, or deployment pipelines to wire up
+- **Every IM platform, one dashboard** — WhatsApp, Discord, Slack, Telegram, Teams, LINE, Signal, WeChat, and more. Manage all your chatbots from a single place
+- **Scale to thousands of users** — each user gets fully isolated conversations, memory, and state. No cross-contamination, no shared context leaking between users
+- **Mix and match AI backends** — run OpenClaw, GPT, Claude, OpenRouter, self-hosted models, or all of them at once. Users can even talk to multiple agents in the same chat
+- **Consumer onboarding portal** — share a single link with your users. They see every available channel and can connect instantly — scan a QR for WeChat, add the bot on Discord via OAuth, message a number on WhatsApp. Fully white-label with custom branding
+- **Built for teams** — RBAC, audit logs, access policies, and project plans from day one. No bolting on security later
+- **Open source and extensible** — MIT licensed. Add custom adapters, swap AI providers, or self-host on your own infrastructure
 
 ## Supported channels
 
@@ -34,11 +37,11 @@ ClawScale is an open-source gateway that connects AI agents — OpenClaw, Claude
 | Instagram | Meta API |
 | Facebook | Webhook |
 
-Add channels from the dashboard — provide credentials and hit **Connect**. WhatsApp and WeChat Personal show a QR code for pairing.
+Add channels from the dashboard in seconds — provide credentials and hit **Connect**. WhatsApp and WeChat Personal show a QR code for instant pairing. No server configuration or webhook wiring required.
 
 ## Supported AI backends
 
-ClawScale doesn't lock you into one AI provider. Connect any combination of these:
+ClawScale doesn't lock you into one AI provider. Bring your own keys, mix providers freely, and switch at any time — zero vendor lock-in:
 
 | Backend | Description |
 |---|---|
@@ -91,7 +94,7 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Open the dashboard and **Register** to create your workspace. You're the admin.
+Open the dashboard and **Register** to create your project. You're the admin. From here you can add channels, connect AI backends, and have your first chatbot live in under 5 minutes.
 
 ## How it works
 
@@ -117,6 +120,32 @@ Channel Adapter ──> Reply to end-user
 2. The channel adapter normalizes the message and forwards it to ClawScale
 3. ClawScale routes the message to the right AI backend(s), keeping each user's conversation history isolated
 4. The AI response is sent back through the same channel
+
+## Consumer onboarding portal
+
+ClawScale generates a consumer-facing onboarding page for your end-users. Share a single URL and they'll see every connected channel with one-click connection:
+
+```
+https://your-clawscale-instance/onboard?tenant=your-project
+```
+
+| Channel | How users connect |
+|---|---|
+| Discord | OAuth invite link — adds the bot to their server |
+| WhatsApp | Save the number and send a message, or scan a QR code |
+| WeChat | Scan a QR code with the WeChat app |
+| Telegram | One-click link opens a chat with the bot |
+| Slack | Install link adds the app to their Slack workspace |
+| LINE, Signal, Teams, Matrix, Web Chat | Platform-specific connect link or instructions |
+
+**White-label branding** — admins can customize the onboarding portal from the dashboard:
+
+- Custom headline and subtitle
+- Custom logo
+- Accent color
+- Option to hide the "Powered by ClawScale" footer
+
+This means developers set up the channels once, and ClawScale provides a polished, branded portal that end-users interact with directly — no additional frontend work needed.
 
 ## Attachment support
 
@@ -193,21 +222,25 @@ To message a specific backend: `gpt> explain quantum computing`
 
 ClawScale is designed for multi-user deployments. Every user's conversations, memory, and state are fully isolated — data never crosses boundaries.
 
-**Access control** — workspace admins decide who can interact with the bot:
+**Access control** — project admins decide who can interact with the bot:
 
 - **Anonymous** — anyone can chat (default)
 - **Whitelist** — only approved users
 - **Blacklist** — block specific users
 
-**Roles** — each workspace has three roles:
+**Roles** — each project has three roles:
 
 | Role | Access |
 |---|---|
 | **Admin** | Full access — channels, backends, settings, members, audit logs |
-| **Member** | Manage conversations and workflows |
+| **Member** | Manage conversations |
 | **Viewer** | Read-only access |
 
 **Plans**: Starter (5 members, 3 channels), Business (50 members, 20 channels), Enterprise (unlimited).
+
+## Why ClawScale over building it yourself?
+
+Most teams that want IM chatbots end up gluing together webhook handlers, message queues, user-state stores, and AI API calls — and then doing it again for every new platform. ClawScale replaces all of that with a single gateway that already handles multi-tenant isolation, conversation routing, attachment forwarding, and backend orchestration out of the box.
 
 ## Comparison with OpenClaw
 
@@ -222,6 +255,7 @@ ClawScale separates the gateway layer from the agent layer, so each can scale in
 | **Agents** | One built-in agent | Multiple backends per tenant |
 | **Scaling** | One instance | Horizontal — multiple agents behind one gateway |
 | **Admin controls** | None | Dashboard with RBAC, audit logs, access policies |
+| **Time to deploy** | Manual setup per platform | Minutes — dashboard-driven, no code required |
 
 ## Tech stack
 

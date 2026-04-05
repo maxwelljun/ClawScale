@@ -9,7 +9,7 @@ export interface Tenant {
 // ── Tenant Settings ───────────────────────────────────────────────────────────
 
 export interface ClawScaleAgentSettings {
-  /** Display name shown to end-users (default: "ClawScale Assistant") */
+  /** Display name shown to end-users (default: "ClawScale Setup Assistant") */
   name?: string;
   /**
    * Optional style/postscript appended to knowledge-base and off-topic replies.
@@ -28,6 +28,17 @@ export interface ClawScaleAgentSettings {
     /** Enable multimodal input (images, files, audio). Requires a vision-capable model. */
     multimodal?: boolean;
   };
+}
+
+export interface OnboardingBranding {
+  /** Headline shown on the onboarding portal (default: "Connect to {tenantName}") */
+  headline?: string;
+  /** Subtitle shown below the headline */
+  subtitle?: string;
+  /** Logo URL (defaults to ClawScale logo) */
+  logoUrl?: string;
+  /** Primary accent colour hex (default: "#00C9A7") */
+  accentColor?: string;
 }
 
 export interface TenantSettings {
@@ -49,5 +60,7 @@ export interface TenantSettings {
   };
   /** Built-in ClawScale orchestrator agent configuration */
   clawscale?: ClawScaleAgentSettings;
+  /** Onboarding portal branding (consumer-facing page) */
+  onboarding?: OnboardingBranding;
 }
 

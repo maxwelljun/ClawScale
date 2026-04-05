@@ -46,18 +46,18 @@ export default function Register() {
         </div>
 
         <div className="card p-8">
-          <h1 className="text-xl font-semibold text-gray-900 mb-1">Create your workspace</h1>
-          <p className="text-sm text-gray-500 mb-6">Get your team on ClawScale in minutes.</p>
+          <h1 className="text-xl font-semibold text-gray-900 mb-1">Create your project</h1>
+          <p className="text-sm text-gray-500 mb-6">Set up your IM chatbots in minutes.</p>
 
           {error && <div className="mb-4 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-600">{error}</div>}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="label" htmlFor="tenantName">Workspace name</label>
+              <label className="label" htmlFor="tenantName">Project name</label>
               <input id="tenantName" className="input" placeholder="Acme Corp" value={form.tenantName} onChange={set('tenantName')} required />
             </div>
             <div>
-              <label className="label" htmlFor="tenantSlug">Workspace URL</label>
+              <label className="label" htmlFor="tenantSlug">Project URL</label>
               <div className="flex items-center rounded-lg border border-gray-200 focus-within:border-teal-500 focus-within:ring-1 focus-within:ring-teal-500 bg-white overflow-hidden">
                 <span className="pl-3 text-sm text-gray-400 select-none whitespace-nowrap">clawscale.org/</span>
                 <input id="tenantSlug" className="flex-1 px-1 py-2 text-sm outline-none bg-transparent"
@@ -78,12 +78,12 @@ export default function Register() {
               <input id="password" type="password" className="input" placeholder="Min. 8 characters" value={form.password} onChange={set('password')} minLength={8} required />
             </div>
             <button type="submit" className="btn-primary w-full mt-2" disabled={loading}>
-              {loading && <Loader2 className="h-4 w-4 animate-spin" />} Create workspace
+              {loading && <Loader2 className="h-4 w-4 animate-spin" />} Create project
             </button>
           </form>
 
           <p className="mt-6 text-center text-sm text-gray-500">
-            Already have a workspace?{' '}
+            Already have a project?{' '}
             <Link href="/login" className="text-teal-600 hover:underline font-medium">Sign in</Link>
           </p>
         </div>

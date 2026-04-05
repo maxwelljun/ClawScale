@@ -13,7 +13,56 @@
 
 import { createAgent, initChatModel, tool } from 'langchain';
 import { z } from 'zod/v4';
+import mammoth from 'mammoth';
+import * as XLSX from 'xlsx';
 import { commandList, commandSummary } from './slash-commands.js';
+
+// ── File content extraction ────────────────────────────────────────────────
+
+/**
+ * Extract text from a data: URL of a non-PDF file.
+ * Supported: docx, xlsx/xls, csv, txt, json, markdown, code files.
+ * Returns extracted text or null if unsupported.
+ */
+async function extractFileText(dataUrl: string, filename: string, contentType: string): Promise<string | null> {
+  const match = dataUrl.match(/^data:[^;]+;base64,(.+)$/);
+  if (!match?.[1]) return null;
+  const buf = Buffer.from(match[1], 'base64');
+
+  // DOCX
+  if (contentType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || filename.endsWith('.docx')) {
+    const result = await mammoth.extractRawText({ buffer: buf });
+    return result.value;
+  }
+
+  // DOC (older format) — mammoth doesn't support .doc, describe as unsupported
+  if (contentType === 'application/msword' || filename.endsWith('.doc')) {
+    return null;
+  }
+
+  // XLSX / XLS
+  if (contentType.includes('spreadsheet') || filename.endsWith('.xlsx') || filename.endsWith('.xls')) {
+    const workbook = XLSX.read(buf);
+    const texts: string[] = [];
+    for (const sheetName of workbook.SheetNames) {
+      const csv = XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName]!);
+      texts.push(`--- Sheet: ${sheetName} ---\n${csv}`);
+    }
+    return texts.join('\n\n');
+  }
+
+  // CSV
+  if (contentType === 'text/csv' || filename.endsWith('.csv')) {
+    return buf.toString('utf-8');
+  }
+
+  // Plain text, JSON, markdown, code
+  if (contentType.startsWith('text/') || contentType === 'application/json' || filename.match(/\.(txt|md|json|xml|html|css|js|ts|py|yaml|yml|toml|ini|cfg|sh|bat|log|sql)$/i)) {
+    return buf.toString('utf-8');
+  }
+
+  return null;
+}
 
 export interface BackendOption {
   id: string;
@@ -138,27 +187,72 @@ export async function runClawscaleAgent(ctx: AgentContext): Promise<string> {
   try {
     const multimodal = ctx.llmConfig.multimodal === true;
 
-    function buildContent(text: string, attachments?: HistoryAttachment[]): string | any[] {
-      const imageAttachments = attachments?.filter((a) => a.contentType.startsWith('image/')) ?? [];
-      if (!multimodal || imageAttachments.length === 0) return text;
+    /**
+     * Build multimodal content blocks.
+     * - Images → image_url blocks
+     * - PDFs → native file blocks (OpenAI supports these)
+     * - DOCX, XLSX, CSV, TXT, etc. → extracted to text
+     * - Unsupported types → text description
+     */
+    async function buildContent(text: string, attachments?: HistoryAttachment[]): Promise<string | any[]> {
+      if (!multimodal || !attachments?.length) return text;
       const parts: any[] = [];
       if (text) parts.push({ type: 'text', text });
-      for (const att of imageAttachments) {
-        parts.push({ type: 'image_url', image_url: { url: att.url } });
+      for (const att of attachments) {
+        if (att.contentType.startsWith('image/')) {
+          parts.push({ type: 'image_url', image_url: { url: att.url } });
+        } else if (att.contentType === 'application/pdf' && att.url.startsWith('data:')) {
+          // PDFs: send as native file block
+          parts.push({
+            type: 'file',
+            file: { file_data: att.url, filename: att.filename },
+          });
+        } else if (att.url.startsWith('data:')) {
+          // Try to extract text from the file
+          const extracted = await extractFileText(att.url, att.filename, att.contentType);
+          if (extracted) {
+            const truncated = extracted.length > 50000 ? extracted.slice(0, 50000) + '\n\n[... truncated]' : extracted;
+            parts.push({ type: 'text', text: `📄 Contents of "${att.filename}":\n\n${truncated}` });
+          } else {
+            parts.push({ type: 'text', text: `[Attached file: ${att.filename} (${att.contentType}) — unsupported format for content extraction]` });
+          }
+        } else {
+          parts.push({ type: 'text', text: `[Attached file: ${att.filename} (${att.contentType})]` });
+        }
       }
-      const nonImage = attachments?.filter((a) => !a.contentType.startsWith('image/')) ?? [];
-      if (nonImage.length > 0) {
-        parts.push({ type: 'text', text: nonImage.map((a) => `[Attached: ${a.filename} (${a.contentType})]`).join('\n') });
-      }
-      return parts;
+      return parts.length > 0 ? parts : text;
     }
 
-    const historyMessages = (ctx.history ?? []).map((m) => ({
-      role: m.role,
-      content: buildContent(m.content, m.attachments),
+    // For history messages, include extracted text from document attachments
+    // so the LLM retains context from previously analyzed files.
+    // Images use summaries to avoid huge base64 blobs; documents get text-extracted.
+    const historyMessages = await Promise.all((ctx.history ?? []).map(async (m) => {
+      if (!multimodal || !m.attachments?.length) return { role: m.role, content: m.content };
+      const extras: string[] = [];
+      for (const att of m.attachments) {
+        if (att.contentType.startsWith('image/')) {
+          extras.push(`[Attached image: ${att.filename}]`);
+        } else if (att.url.startsWith('data:')) {
+          const extracted = await extractFileText(att.url, att.filename, att.contentType);
+          if (extracted) {
+            const truncated = extracted.length > 50000 ? extracted.slice(0, 50000) + '\n\n[... truncated]' : extracted;
+            extras.push(`📄 Contents of "${att.filename}":\n\n${truncated}`);
+          } else {
+            extras.push(`[Attached file: ${att.filename} (${att.contentType})]`);
+          }
+        } else {
+          extras.push(`[Attached file: ${att.filename} (${att.contentType})]`);
+        }
+      }
+      const combined = [m.content, ...extras].filter(Boolean).join('\n');
+      return { role: m.role, content: combined };
     }));
+
+    // For the current message, include full attachment content
+    const currentContent = await buildContent(ctx.text, ctx.attachments);
+
     const result = await agent.invoke({
-      messages: [...historyMessages, { role: 'user', content: buildContent(ctx.text, ctx.attachments) }],
+      messages: [...historyMessages, { role: 'user', content: currentContent }],
     });
 
     // Extract the last assistant message

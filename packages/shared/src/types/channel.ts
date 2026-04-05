@@ -136,10 +136,25 @@ export const CHANNEL_CONFIG_SCHEMA: Record<ChannelType, { label: string; fields:
   },
 };
 
+/** Channels that end-users can connect themselves via QR scan (no admin credentials needed) */
+export const USER_PROVISIONED_CHANNELS: ChannelType[] = ['whatsapp', 'wechat_personal'];
+
 export interface ChannelConfigField {
   key: string;
   label: string;
   type: 'text' | 'password' | 'number';
   required: boolean;
   placeholder: string;
+}
+
+/** Public-facing fields appended to every channel type for the onboarding portal */
+const ONBOARDING_FIELDS: ChannelConfigField[] = [
+  { key: 'connectUrl', label: 'Public connect URL (onboarding portal)', type: 'text', required: false, placeholder: 'https://t.me/mybot, https://wa.me/123...' },
+  { key: 'botUsername', label: 'Bot username (onboarding portal)', type: 'text', required: false, placeholder: 'mybot' },
+  { key: 'publicPhoneNumber', label: 'Public phone number (onboarding portal)', type: 'text', required: false, placeholder: '+1234567890' },
+];
+
+// Append onboarding fields to every channel type
+for (const key of Object.keys(CHANNEL_CONFIG_SCHEMA) as ChannelType[]) {
+  CHANNEL_CONFIG_SCHEMA[key].fields = [...CHANNEL_CONFIG_SCHEMA[key].fields, ...ONBOARDING_FIELDS];
 }

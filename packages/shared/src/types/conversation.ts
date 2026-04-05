@@ -28,10 +28,18 @@ export interface Conversation {
   _count?: { messages: number };
 }
 
+export interface MessageAttachment {
+  url: string;
+  filename: string;
+  contentType: string;
+  size?: number;
+}
+
 export interface Message {
   id: string;
   conversationId: string;
   role: MessageRole;
   content: string;
+  metadata?: { attachments?: MessageAttachment[]; [key: string]: unknown };
   createdAt: string;
 }

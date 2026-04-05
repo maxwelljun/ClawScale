@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { MessageSquare, Radio, ArrowRight, Zap, Users, Bot, UserCheck } from 'lucide-react';
+import { MessageSquare, Radio, ArrowRight, Users, Bot, UserCheck } from 'lucide-react';
 import { api } from '@/lib/api';
 import { getTenant } from '@/lib/auth';
 import type { ApiResponse } from '@clawscale/shared';
@@ -56,9 +56,9 @@ export default function Dashboard() {
         <QuickCard to="/channels" title="Channels"
           desc="Connect WhatsApp, Telegram, Slack, and more to your bot."
           icon={<Radio className="h-5 w-5" />} />
-        <QuickCard to="/workflows" title="Workflows"
-          desc="Define scripts and API integrations the bot can invoke."
-          icon={<Zap className="h-5 w-5" />} />
+        <QuickCard to="/ai-backends" title="AI Backends"
+          desc="Configure and manage your AI providers and models."
+          icon={<Bot className="h-5 w-5" />} />
       </div>
     </div>
   );

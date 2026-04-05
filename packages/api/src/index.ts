@@ -1,8 +1,7 @@
 import 'dotenv/config';
-import { serve } from '@hono/node-server';
-import { Hono } from 'hono';
-import { cors } from 'hono/cors';
-import { logger } from 'hono/logger';
+import express from 'express';
+import cors from 'cors';
+import morgan from 'morgan';
 import { authRouter } from './routes/auth.js';
 import { usersRouter } from './routes/users.js';
 import { channelsRouter } from './routes/channels.js';
@@ -25,49 +24,52 @@ import { initTeamsAdapters } from './adapters/teams.js';
 import { initWABusinessAdapters } from './adapters/whatsapp-business.js';
 import { initBridgeWebSocket } from './gateway/bridge-ws.js';
 
-const app = new Hono();
+const app = express();
 
 // ─── Global middleware ────────────────────────────────────────────────────────
 
 app.use(
-  '*',
   cors({
     origin: process.env['CORS_ORIGIN'] ?? 'http://localhost:4040',
-    allowHeaders: ['Content-Type', 'Authorization'],
-    allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     credentials: true,
   }),
 );
-app.use('*', logger());
+app.use(morgan('dev'));
+app.use(express.json());
 
 // ─── Health check ─────────────────────────────────────────────────────────────
 
-app.get('/health', (c) => c.json({ ok: true, version: '0.1.0' }));
+app.get('/health', (_req, res) => res.json({ ok: true, version: '0.1.0' }));
 
 // ─── Dashboard API routes (internal members) ─────────────────────────────────
 
-app.route('/auth', authRouter);
-app.route('/api/users', usersRouter);
-app.route('/api/channels', channelsRouter);
-app.route('/api/tenant', tenantRouter);
-app.route('/api/conversations', conversationsRouter);
-app.route('/api/ai-backends', aiBackendsRouter);
-app.route('/api/end-users', endUsersRouter);
+app.use('/auth', authRouter);
+app.use('/api/users', usersRouter);
+app.use('/api/channels', channelsRouter);
+app.use('/api/tenant', tenantRouter);
+app.use('/api/conversations', conversationsRouter);
+app.use('/api/ai-backends', aiBackendsRouter);
+app.use('/api/end-users', endUsersRouter);
 
 // ─── Public onboarding routes ────────────────────────────────────────────────
 
-app.route('/api/onboard', onboardRouter);
+app.use('/api/onboard', onboardRouter);
 
 // ─── Gateway (inbound messages from social channels) ─────────────────────────
 
-app.route('/gateway', gatewayRouter);
+app.use('/gateway', gatewayRouter);
 
 // ─── Fallback ─────────────────────────────────────────────────────────────────
 
-app.notFound((c) => c.json({ ok: false, error: 'Not found' }, 404));
-app.onError((err, c) => {
+app.use((_req, res) => {
+  res.status(404).json({ ok: false, error: 'Not found' });
+});
+
+app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error(err);
-  return c.json({ ok: false, error: 'Internal server error' }, 500);
+  res.status(500).json({ ok: false, error: 'Internal server error' });
 });
 
 // ─── Start server ─────────────────────────────────────────────────────────────
@@ -75,8 +77,8 @@ app.onError((err, c) => {
 const port = parseInt(process.env['PORT'] ?? '4041', 10);
 const host = process.env['HOST'] ?? '0.0.0.0';
 
-const server = serve({ fetch: app.fetch, port, hostname: host }, (info) => {
-  console.log(`ClawScale API running on http://${info.address}:${info.port}`);
+const server = app.listen(port, host, () => {
+  console.log(`ClawScale API running on http://${host}:${port}`);
   initBridgeWebSocket(server);
   initDiscordAdapters().catch((err) => console.error('[discord] Init failed:', err));
   initWeChatAdapters().catch((err) => console.error('[wechat] Init failed:', err));

@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Router } from 'express';
 import { db } from '../db/index.js';
 import { generateId } from '../lib/id.js';
 import { startWhatsAppBot, getWhatsAppQR, getWhatsAppStatus } from '../adapters/whatsapp.js';
@@ -6,7 +6,7 @@ import { startWeixinQR, getWeixinQR, getWeixinStatus } from '../adapters/wechat.
 import { USER_PROVISIONED_CHANNELS, CHANNEL_CONFIG_SCHEMA } from '@clawscale/shared';
 import type { TenantSettings, OnboardingBranding, ChannelType } from '@clawscale/shared';
 
-const onboardRouter = new Hono();
+const onboardRouter = Router();
 
 /* ─── Rate limiter (in-memory, per IP) ─── */
 const connectAttempts = new Map<string, { count: number; resetAt: number }>();
@@ -29,13 +29,14 @@ function isRateLimited(ip: string): boolean {
  * Public endpoint — returns active channels for the project
  * plus user-provisioned channel types.
  */
-onboardRouter.get('/channels', async (c) => {
+onboardRouter.get('/channels', async (req, res) => {
   const tenant = await db.tenant.findFirst({
     select: { id: true, name: true, settings: true },
   });
 
   if (!tenant) {
-    return c.json({ error: 'No project configured' }, 404);
+    res.status(404).json({ error: 'No project configured' });
+    return;
   }
 
   const settings = (tenant.settings ?? {}) as unknown as TenantSettings;
@@ -96,7 +97,7 @@ onboardRouter.get('/channels', async (c) => {
     label: CHANNEL_CONFIG_SCHEMA[type].label,
   }));
 
-  return c.json({
+  res.json({
     tenantName: tenant.name,
     branding,
     channels: publicChannels,
@@ -109,21 +110,23 @@ onboardRouter.get('/channels', async (c) => {
  * Public endpoint — starts a QR session for a user-provisioned channel.
  * Auto-creates the channel record if it doesn't exist.
  */
-onboardRouter.post('/connect', async (c) => {
-  const ip = c.req.header('x-forwarded-for') ?? c.req.header('x-real-ip') ?? 'unknown';
+onboardRouter.post('/connect', async (req, res) => {
+  const ip = req.headers['x-forwarded-for'] as string ?? req.headers['x-real-ip'] as string ?? 'unknown';
   if (isRateLimited(ip)) {
-    return c.json({ error: 'Too many attempts. Please try again later.' }, 429);
+    res.status(429).json({ error: 'Too many attempts. Please try again later.' });
+    return;
   }
 
-  const body = await c.req.json<{ type?: string }>().catch(() => ({ type: undefined }));
+  const body = req.body ?? {};
   const type = body.type as ChannelType | undefined;
 
   if (!type || !USER_PROVISIONED_CHANNELS.includes(type)) {
-    return c.json({ error: 'Invalid channel type' }, 400);
+    res.status(400).json({ error: 'Invalid channel type' });
+    return;
   }
 
   const tenant = await db.tenant.findFirst({ select: { id: true } });
-  if (!tenant) return c.json({ error: 'No project configured' }, 404);
+  if (!tenant) { res.status(404).json({ error: 'No project configured' }); return; }
 
   // Create a new channel for each user connection
   const id = generateId('ch');
@@ -146,29 +149,31 @@ onboardRouter.post('/connect', async (c) => {
     startWeixinQR(channel.id).catch(() => {});
   }
 
-  return c.json({ ok: true, data: { channelId: channel.id, status: 'pending' } });
+  res.json({ ok: true, data: { channelId: channel.id, status: 'pending' } });
 });
 
 /**
  * GET /api/onboard/qr/:channelId
  * Public QR polling endpoint — only for user-provisioned channels.
  */
-onboardRouter.get('/qr/:channelId', async (c) => {
-  const channelId = c.req.param('channelId')!;
+onboardRouter.get('/qr/:channelId', async (req, res) => {
+  const channelId = req.params.channelId as string;
 
   const channel = await db.channel.findUnique({
     where: { id: channelId },
     select: { id: true, type: true, status: true },
   });
 
-  if (!channel) return c.json({ ok: false, error: 'Channel not found' }, 404);
+  if (!channel) { res.status(404).json({ ok: false, error: 'Channel not found' }); return; }
   if (!USER_PROVISIONED_CHANNELS.includes(channel.type as ChannelType)) {
-    return c.json({ ok: false, error: 'Channel does not support QR login' }, 400);
+    res.status(400).json({ ok: false, error: 'Channel does not support QR login' });
+    return;
   }
 
   // Already connected
   if (channel.status === 'connected') {
-    return c.json({ ok: true, data: { qr: null, qrUrl: null, status: 'connected' } });
+    res.json({ ok: true, data: { qr: null, qrUrl: null, status: 'connected' } });
+    return;
   }
 
   if (channel.type === 'wechat_personal') {
@@ -183,7 +188,8 @@ onboardRouter.get('/qr/:channelId', async (c) => {
       });
     }
     const status = getWeixinStatus(channelId);
-    return c.json({ ok: true, data: { qr: qr?.image ?? null, qrUrl: qr?.url ?? null, status } });
+    res.json({ ok: true, data: { qr: qr?.image ?? null, qrUrl: qr?.url ?? null, status } });
+    return;
   }
 
   // WhatsApp
@@ -199,7 +205,7 @@ onboardRouter.get('/qr/:channelId', async (c) => {
   }
 
   const status = getWhatsAppStatus(channelId);
-  return c.json({ ok: true, data: { qr: qr?.image ?? null, qrUrl: qr?.url ?? null, status } });
+  res.json({ ok: true, data: { qr: qr?.image ?? null, qrUrl: qr?.url ?? null, status } });
 });
 
 export { onboardRouter };

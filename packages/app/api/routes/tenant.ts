@@ -98,6 +98,13 @@ tenantRouter.patch('/', requireAdmin, validate(updateSettingsSchema), async (req
   res.json({ ok: true, data: maskTenantSecrets(updated) });
 });
 
+// ── DELETE /api/tenant ──────────────────────────────────────────────────────
+tenantRouter.delete('/', requireAdmin, async (req, res) => {
+  const { tenantId } = req.auth!;
+  await db.tenant.delete({ where: { id: tenantId } });
+  res.json({ ok: true, data: null });
+});
+
 // ── GET /api/tenant/audit ────────────────────────────────────────────────────
 tenantRouter.get('/audit', requireAdmin, async (req, res) => {
   const { tenantId } = req.auth!;

@@ -16,6 +16,10 @@ const updateSettingsSchema = z.object({
         name:        z.string().min(1).max(80).optional(),
         answerStyle: z.string().max(500).optional(),
         isActive:    z.boolean().optional(),
+        rateLimit: z.object({
+          maxMessages: z.number().int().min(0).max(10000),
+          windowSeconds: z.number().int().min(1).max(86400),
+        }).nullable().optional(),
         llm: z.object({
           model: z.string().min(1).max(100),
           apiKey: z.string().max(500).optional(),

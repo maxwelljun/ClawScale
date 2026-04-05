@@ -23,6 +23,9 @@ export default function Settings() {
   const [clawscaleApiKey, setClawscaleApiKey] = useState('');
   const [apiKeySet, setApiKeySet] = useState(false);
   const [clawscaleMultimodal, setClawscaleMultimodal] = useState(false);
+  const [rateLimitEnabled, setRateLimitEnabled] = useState(false);
+  const [rateLimitMax, setRateLimitMax] = useState(20);
+  const [rateLimitWindow, setRateLimitWindow] = useState(60);
 
   useEffect(() => {
     api.get<ApiResponse<Tenant>>('/api/tenant').then((res) => {
@@ -34,6 +37,8 @@ export default function Settings() {
         setClawscaleModel(s.clawscale?.llm?.model ?? 'openai:gpt-5.4-mini');
         setApiKeySet(!!s.clawscale?.llm?.apiKey && s.clawscale.llm.apiKey !== '');
         setClawscaleMultimodal(s.clawscale?.llm?.multimodal ?? false);
+        const rl = s.clawscale?.rateLimit;
+        if (rl) { setRateLimitEnabled(true); setRateLimitMax(rl.maxMessages); setRateLimitWindow(rl.windowSeconds); }
       }
       setLoading(false);
     });
@@ -52,6 +57,7 @@ export default function Settings() {
               ...(clawscaleApiKey ? { apiKey: clawscaleApiKey } : {}),
               multimodal: clawscaleMultimodal,
             },
+            rateLimit: rateLimitEnabled ? { maxMessages: rateLimitMax, windowSeconds: rateLimitWindow } : null,
           },
         },
       });
@@ -108,6 +114,25 @@ export default function Settings() {
                 <span className="text-xs text-gray-500 block">Allow the assistant to process images, files, and audio sent by users. Requires a vision-capable model (e.g. GPT-4o, Claude Sonnet).</span>
               </span>
             </label>
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input type="checkbox" checked={rateLimitEnabled} onChange={(e) => setRateLimitEnabled(e.target.checked)} disabled={!isAdmin} className="mt-0.5" />
+              <span>
+                <span className="text-sm font-medium text-gray-900">Rate limit</span>
+                <span className="text-xs text-gray-500 block">Limit how many messages each end-user can send within a time window.</span>
+              </span>
+            </label>
+            {rateLimitEnabled && (
+              <div className="flex items-center gap-3 pl-7">
+                <div className="flex-1">
+                  <label className="label">Max messages</label>
+                  <input type="number" className="input" min={1} max={10000} value={rateLimitMax} onChange={(e) => setRateLimitMax(Number(e.target.value))} disabled={!isAdmin} />
+                </div>
+                <div className="flex-1">
+                  <label className="label">Window (seconds)</label>
+                  <input type="number" className="input" min={1} max={86400} value={rateLimitWindow} onChange={(e) => setRateLimitWindow(Number(e.target.value))} disabled={!isAdmin} />
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

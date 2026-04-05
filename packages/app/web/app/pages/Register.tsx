@@ -13,12 +13,14 @@ export default function Register() {
   const [hasProject, setHasProject] = useState<boolean | null>(null);
   const [projectName, setProjectName] = useState('');
   const [registrationDisabled, setRegistrationDisabled] = useState(false);
+  const [logoUrl, setLogoUrl] = useState('/logo.png');
 
   useEffect(() => {
-    api.get<ApiResponse<{ hasProject: boolean; projectName: string | null; allowRegistration: boolean }>>('/auth/status').then((res) => {
+    api.get<ApiResponse<{ hasProject: boolean; projectName: string | null; allowRegistration: boolean; logoUrl: string | null }>>('/auth/status').then((res) => {
       if (res.ok) {
         setHasProject(res.data.hasProject);
         setProjectName(res.data.projectName ?? '');
+        if (res.data.logoUrl) setLogoUrl(res.data.logoUrl);
         if (res.data.hasProject && !res.data.allowRegistration) {
           setRegistrationDisabled(true);
         }
@@ -60,7 +62,7 @@ export default function Register() {
     <div className="flex min-h-screen items-center justify-center bg-navy-950 px-4 py-12">
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-2.5 mb-8">
-          <img src="/logo.png" alt="ClawScale" width={32} height={32} className="h-8 w-8" />
+          <img src={logoUrl} alt="ClawScale" width={32} height={32} className="h-8 w-8 rounded object-cover" />
           <span className="text-2xl font-semibold text-white">ClawScale</span>
         </div>
 

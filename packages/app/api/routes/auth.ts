@@ -146,7 +146,7 @@ authRouter.get('/status', async (_req, res) => {
   const tenant = await db.tenant.findFirst({ select: { name: true, settings: true } });
   const settings = tenant?.settings as TenantSettings | null;
   const allowRegistration = settings?.allowRegistration !== false;
-  res.json({ ok: true, data: { hasProject: !!tenant, projectName: tenant?.name ?? null, allowRegistration } });
+  res.json({ ok: true, data: { hasProject: !!tenant, projectName: tenant?.name ?? null, allowRegistration, logoUrl: settings?.logoUrl ?? null } });
 });
 
 // ── POST /auth/login ─────────────────────────────────────────────────────────

@@ -20,6 +20,7 @@ export default function Settings() {
   const [deleteProjectConfirm, setDeleteProjectConfirm] = useState('');
   const [name, setName] = useState('');
   const [siteTitle, setSiteTitle] = useState('');
+  const [logoUrl, setLogoUrl] = useState('');
   const [endUserAccess, setEndUserAccess] = useState<TenantSettings['endUserAccess']>('anonymous');
   const [clawscaleModel, setClawscaleModel] = useState('openai:gpt-5.4-mini');
   const [clawscaleApiKey, setClawscaleApiKey] = useState('');
@@ -38,6 +39,7 @@ export default function Settings() {
         setTenant(t); setName(t.name);
         const s = t.settings as TenantSettings;
         setSiteTitle(s.siteTitle ?? '');
+        setLogoUrl(s.logoUrl ?? '');
         setEndUserAccess(s.endUserAccess ?? 'anonymous');
         setClawscaleModel(s.clawscale?.llm?.model ?? 'openai:gpt-5.4-mini');
         setApiKeySet(!!s.clawscale?.llm?.apiKey && s.clawscale.llm.apiKey !== '');
@@ -58,6 +60,7 @@ export default function Settings() {
         name,
         settings: {
           siteTitle: siteTitle || undefined,
+          logoUrl: logoUrl || null,
           defaultHomePage: defaultHomePage || null,
           allowRegistration,
           endUserAccess,
@@ -76,6 +79,8 @@ export default function Settings() {
       storeTenant(res.data);
       const s = res.data.settings as TenantSettings;
       document.title = s.siteTitle || `${res.data.name} — ClawScale`;
+      const favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+      if (favicon) favicon.href = s.logoUrl || '/logo.png';
       setTimeout(() => setSuccess(false), 3000);
     } finally { setSaving(false); }
   }
@@ -107,6 +112,14 @@ export default function Settings() {
               <label className="label">Browser tab title</label>
               <input className="input" value={siteTitle} onChange={(e) => setSiteTitle(e.target.value)} disabled={!isAdmin} placeholder={`${name || 'Project'} — ClawScale`} />
               <p className="text-xs text-gray-400 mt-1">Custom title for the browser tab. Leave blank to use the default.</p>
+            </div>
+            <div>
+              <label className="label">Logo URL</label>
+              <div className="flex items-center gap-3">
+                {logoUrl && <img src={logoUrl} alt="Logo preview" className="h-10 w-10 rounded-lg object-cover border border-gray-200" />}
+                <input className="input flex-1" placeholder="https://example.com/logo.png" value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} disabled={!isAdmin} />
+              </div>
+              <p className="text-xs text-gray-400 mt-1">Used as the sidebar logo, browser favicon, and on login/register pages. Leave blank for the default.</p>
             </div>
             <div>
               <label className="label">Default home page</label>

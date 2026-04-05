@@ -51,6 +51,8 @@ export interface OnboardingBranding {
 export interface TenantSettings {
   /** Custom browser tab title (falls back to tenant name if not set) */
   siteTitle?: string;
+  /** Project logo URL — used in the sidebar, login/register pages, and as the browser favicon */
+  logoUrl?: string;
   /** Display name for the AI persona shown to end-users */
   personaName: string;
   /** System prompt that defines the bot's behaviour */

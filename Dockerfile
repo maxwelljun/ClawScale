@@ -11,8 +11,8 @@ ENV NODE_ENV=production
 
 COPY <<'EOF' /app/start.sh
 #!/bin/sh
-cd /app/packages/app && npx prisma db push --skip-generate && cd /app
-exec HOST=0.0.0.0 PORT=4040 node /app/packages/app/dist/src/index.js
+cd /app/packages/app && npx prisma db push --skip-generate
+exec HOST=0.0.0.0 PORT=4040 node dist/api/index.js
 EOF
 RUN chmod +x /app/start.sh
 

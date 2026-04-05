@@ -1,6 +1,9 @@
-import 'dotenv/config';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
+
+// Load .env from repo root (works regardless of whether we run from source or dist)
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+dotenv.config({ path: path.resolve(process.cwd(), '../../.env') });
 import express from 'express';
 import morgan from 'morgan';
 import { authRouter } from './routes/auth.js';
@@ -56,8 +59,7 @@ app.use('/gateway', gatewayRouter);
 
 // ─── Static file serving (production) ────────────────────────────────────────
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const webRoot = path.resolve(__dirname, '../../web/out');
+const webRoot = path.resolve(process.cwd(), 'web', 'out');
 app.use(express.static(webRoot));
 
 // ─── Fallback ─────────────────────────────────────────────────────────────────

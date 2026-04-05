@@ -6,5 +6,5 @@
     "declaration": false,
     "declarationMap": false
   },
-  "include": ["src", "shared"]
+  "include": ["api", "shared"]
 }

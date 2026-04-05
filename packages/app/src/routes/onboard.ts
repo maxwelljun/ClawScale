@@ -3,8 +3,8 @@ import { db } from '../db/index.js';
 import { generateId } from '../lib/id.js';
 import { startWhatsAppBot, getWhatsAppQR, getWhatsAppStatus } from '../adapters/whatsapp.js';
 import { startWeixinQR, getWeixinQR, getWeixinStatus } from '../adapters/wechat.js';
-import { USER_PROVISIONED_CHANNELS, CHANNEL_CONFIG_SCHEMA } from '@clawscale/shared';
-import type { TenantSettings, OnboardingBranding, ChannelType } from '@clawscale/shared';
+import { USER_PROVISIONED_CHANNELS, CHANNEL_CONFIG_SCHEMA } from '../../shared/index.js';
+import type { TenantSettings, OnboardingBranding, ChannelType } from '../../shared/index.js';
 
 const onboardRouter = Router();
 

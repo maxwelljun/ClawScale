@@ -19,7 +19,8 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@clawscale/shared": ["../shared/index.ts"]
     }
   },
   "include": [

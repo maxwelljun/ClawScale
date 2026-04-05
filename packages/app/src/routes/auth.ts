@@ -8,7 +8,7 @@ import { generateId } from '../lib/id.js';
 import { requireAuth } from '../middleware/auth.js';
 import { audit } from '../lib/audit.js';
 import { validate } from '../middleware/validate.js';
-import type { TenantSettings } from '@clawscale/shared';
+import type { TenantSettings } from '../../shared/index.js';
 
 const registerSchema = z.object({
   tenantSlug: z

@@ -17,7 +17,7 @@ import { generateReply } from './ai-backend.js';
 import { runClawscaleAgent, buildSelectionMenu } from './clawscale-agent.js';
 import type { AgentLlmConfig } from './clawscale-agent.js';
 import { parseCommand, resolveTarget, resolveAddRemoveArg, formatCommandHelp } from './slash-commands.js';
-import type { AiBackendType, AiBackendProviderConfig } from '@clawscale/shared';
+import type { AiBackendType, AiBackendProviderConfig } from '../../shared/index.js';
 
 export interface Attachment {
   url: string;

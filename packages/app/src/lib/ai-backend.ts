@@ -4,7 +4,7 @@
  * ClawScale is a pure forwarder: it sends the user's messages to the backend
  * and returns whatever text (or streamed text) the backend responds with.
  *
- * Dispatch is driven by BackendTypeDescriptors from @clawscale/shared.
+ * Dispatch is driven by BackendTypeDescriptors from shared.
  * Each backend type maps to a transport (http, sse, websocket, pty-websocket)
  * and a response format (json-auto, langgraph, raw-text).
  */
@@ -16,8 +16,8 @@ import type {
   BackendTypeDescriptor,
   Transport,
   ResponseFormat,
-} from '@clawscale/shared';
-import { BACKEND_TYPE_DESCRIPTORS } from '@clawscale/shared';
+} from '../../shared/index.js';
+import { BACKEND_TYPE_DESCRIPTORS } from '../../shared/index.js';
 
 export interface PalmosContext {
   endUserId: string;

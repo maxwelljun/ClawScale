@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Loader2, Save, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@/lib/api';
-import { getUser, clearAuth } from '@/lib/auth';
+import { getUser, clearAuth, storeTenant } from '@/lib/auth';
 import type { ApiResponse, Tenant, TenantSettings } from '@clawscale/shared';
 
 export default function Settings() {
@@ -65,6 +65,7 @@ export default function Settings() {
       });
       if (!res.ok) { setError(res.error); return; }
       setTenant(res.data); setSuccess(true);
+      storeTenant(res.data);
       const s = res.data.settings as TenantSettings;
       document.title = s.siteTitle || `${res.data.name} — ClawScale`;
       setTimeout(() => setSuccess(false), 3000);

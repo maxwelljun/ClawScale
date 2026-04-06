@@ -1,4 +1,4 @@
-import { StrictMode } from 'react';
+import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import './globals.css';
@@ -16,12 +16,25 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Onboard from './pages/Onboard';
 import { getTenant } from '@/lib/auth';
-import type { TenantSettings } from '@clawscale/shared';
+import { api } from '@/lib/api';
+import type { TenantSettings, ApiResponse } from '@clawscale/shared';
 
 function HomeRedirect() {
+  // If we have tenant data in localStorage, use it directly
   const tenant = getTenant();
-  const defaultHomePage = (tenant?.settings as TenantSettings | undefined)?.defaultHomePage ?? '/dashboard';
-  return <Navigate to={defaultHomePage} replace />;
+  const localDefault = (tenant?.settings as TenantSettings | undefined)?.defaultHomePage;
+  if (localDefault) return <Navigate to={localDefault} replace />;
+  if (tenant) return <Navigate to="/dashboard" replace />;
+
+  // No tenant in localStorage (unauthenticated) — fetch from public endpoint
+  const [target, setTarget] = useState<string | null>(null);
+  useEffect(() => {
+    api.get<ApiResponse<{ defaultHomePage: string | null }>>('/auth/status').then((res) => {
+      setTarget(res.ok && res.data.defaultHomePage ? res.data.defaultHomePage : '/dashboard');
+    }).catch(() => setTarget('/dashboard'));
+  }, []);
+  if (!target) return null;
+  return <Navigate to={target} replace />;
 }
 
 createRoot(document.getElementById('root')!).render(
@@ -31,8 +44,8 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/onboard" element={<Onboard />} />
+        <Route index element={<HomeRedirect />} />
         <Route element={<DashboardLayout />}>
-          <Route index element={<HomeRedirect />} />
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="conversations" element={<Conversations />} />
           <Route path="channels" element={<Channels />} />

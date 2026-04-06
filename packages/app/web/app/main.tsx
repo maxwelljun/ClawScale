@@ -44,8 +44,8 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/onboard" element={<Onboard />} />
+        <Route index element={<HomeRedirect />} />
         <Route element={<DashboardLayout />}>
-          <Route index element={<HomeRedirect />} />
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="conversations" element={<Conversations />} />
           <Route path="channels" element={<Channels />} />

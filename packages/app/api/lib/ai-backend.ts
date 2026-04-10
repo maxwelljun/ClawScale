@@ -53,6 +53,8 @@ export interface GenerateOptions {
   sender?: string;
   /** Chat platform the message came from (e.g. "telegram", "discord") */
   platform?: string;
+  /** Callback to persist config changes (e.g. auto-created agentId/environmentId) */
+  onConfigUpdate?: (patch: Partial<AiBackendProviderConfig>) => void;
 }
 
 // ── Lazy singletons per config hash ──────────────────────────────────────────
@@ -424,6 +426,181 @@ async function handlePtyWebSocket(
   });
 }
 
+// ── Claude Managed Agents handler ───────────────────────────────────────────
+
+const ANTHROPIC_API = 'https://api.anthropic.com';
+const ANTHROPIC_BETA = 'managed-agents-2026-04-01';
+const ANTHROPIC_VERSION = '2023-06-01';
+
+function anthropicHeaders(apiKey: string): Record<string, string> {
+  return {
+    'Content-Type': 'application/json',
+    'x-api-key': apiKey,
+    'anthropic-version': ANTHROPIC_VERSION,
+    'anthropic-beta': ANTHROPIC_BETA,
+  };
+}
+
+/** Ensure the managed agent and environment exist, creating them if needed. Returns { agentId, environmentId }. */
+async function ensureAgentAndEnvironment(
+  cfg: AiBackendProviderConfig,
+  onUpdate?: (patch: Partial<AiBackendProviderConfig>) => void,
+): Promise<{ agentId: string; environmentId: string }> {
+  const apiKey = cfg.apiKey!;
+  const headers = anthropicHeaders(apiKey);
+
+  let agentId = cfg.agentId;
+  let environmentId = cfg.environmentId;
+  let updated = false;
+
+  if (!agentId) {
+    const res = await fetch(`${ANTHROPIC_API}/v1/agents`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        name: 'ClawScale Agent',
+        model: cfg.model || 'claude-sonnet-4-6',
+        ...(cfg.systemPrompt ? { system: cfg.systemPrompt } : {}),
+        tools: [{ type: 'agent_toolset_20260401' }],
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`Failed to create Claude agent: ${res.status} ${body.slice(0, 300)}`);
+    }
+    const data = (await res.json()) as { id: string };
+    agentId = data.id;
+    updated = true;
+  }
+
+  if (!environmentId) {
+    const res = await fetch(`${ANTHROPIC_API}/v1/environments`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        name: 'ClawScale Environment',
+        config: {
+          type: 'cloud',
+          networking: { type: 'unrestricted' },
+        },
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`Failed to create Claude environment: ${res.status} ${body.slice(0, 300)}`);
+    }
+    const data = (await res.json()) as { id: string };
+    environmentId = data.id;
+    updated = true;
+  }
+
+  if (updated) {
+    cfg.agentId = agentId;
+    cfg.environmentId = environmentId;
+    onUpdate?.({ agentId, environmentId });
+  }
+
+  return { agentId, environmentId };
+}
+
+/**
+ * Handle Claude Managed Agents backend.
+ * Creates a session per request, sends the last user message, streams events until idle.
+ */
+async function handleClaudeAgent(
+  cfg: AiBackendProviderConfig,
+  history: HistoryMessage[],
+  onConfigUpdate?: (patch: Partial<AiBackendProviderConfig>) => void,
+): Promise<string> {
+  if (!cfg.apiKey) throw new Error('Claude Agent backend: apiKey is required');
+
+  const { agentId, environmentId } = await ensureAgentAndEnvironment(cfg, onConfigUpdate);
+  const headers = anthropicHeaders(cfg.apiKey);
+
+  // Create a session
+  const sessionRes = await fetch(`${ANTHROPIC_API}/v1/sessions`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      agent: agentId,
+      environment_id: environmentId,
+    }),
+  });
+  if (!sessionRes.ok) {
+    const body = await sessionRes.text().catch(() => '');
+    throw new Error(`Failed to create Claude session: ${sessionRes.status} ${body.slice(0, 300)}`);
+  }
+  const session = (await sessionRes.json()) as { id: string };
+
+  // Build user message content from the last user message in history
+  const lastUserMsg = [...history].reverse().find((m) => m.role === 'user');
+  if (!lastUserMsg) throw new Error('No user message in history');
+
+  const content: { type: string; text?: string }[] = [{ type: 'text', text: lastUserMsg.content }];
+
+  // Send user event
+  const sendRes = await fetch(`${ANTHROPIC_API}/v1/sessions/${session.id}/events`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      events: [{ type: 'user.message', content }],
+    }),
+  });
+  if (!sendRes.ok) {
+    const body = await sendRes.text().catch(() => '');
+    throw new Error(`Failed to send event: ${sendRes.status} ${body.slice(0, 300)}`);
+  }
+
+  // Stream SSE response until idle
+  const streamRes = await fetch(`${ANTHROPIC_API}/v1/sessions/${session.id}/stream`, {
+    method: 'GET',
+    headers: {
+      ...anthropicHeaders(cfg.apiKey),
+      'Accept': 'text/event-stream',
+    },
+    signal: AbortSignal.timeout(300_000), // 5 min timeout for agent tasks
+  });
+  if (!streamRes.ok || !streamRes.body) {
+    const body = await streamRes.text().catch(() => '');
+    throw new Error(`Failed to stream session: ${streamRes.status} ${body.slice(0, 300)}`);
+  }
+
+  // Read SSE events and accumulate agent message text
+  const reader = streamRes.body.getReader();
+  const decoder = new TextDecoder();
+  let accumulated = '';
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+
+    for (const line of lines) {
+      if (!line.startsWith('data:')) continue;
+      const data = line.slice(5).trim();
+      if (!data) continue;
+
+      let event: any;
+      try { event = JSON.parse(data); } catch { continue; }
+
+      if (event.type === 'agent.message' && Array.isArray(event.content)) {
+        for (const block of event.content) {
+          if (block.type === 'text' && block.text) accumulated += block.text;
+        }
+      } else if (event.type === 'session.status_idle' || event.type === 'session.status_terminated') {
+        reader.cancel();
+        break;
+      }
+    }
+  }
+
+  return accumulated.trim();
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 const CONNECTION_ERROR_CODES = new Set(['ECONNREFUSED', 'ENOTFOUND', 'ETIMEDOUT', 'ECONNRESET']);
@@ -459,6 +636,10 @@ export async function generateReply(options: GenerateOptions): Promise<string> {
     switch (transport) {
       case 'http':
       case 'sse': {
+        // Claude Managed Agents has its own multi-step handler
+        if (type === 'claude-agent') {
+          return await handleClaudeAgent(cfg, history, options.onConfigUpdate);
+        }
         // llm and openclaw use the OpenAI SDK client
         if (type === 'llm' || type === 'openclaw') {
           return await handleOpenAiSdk(type, cfg, history);

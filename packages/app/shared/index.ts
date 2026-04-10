@@ -86,7 +86,7 @@ export interface TenantSettings {
   backendLabels?: 'show' | 'hide' | 'force-hide';
 }
 
-export type AiBackendType = 'llm' | 'openclaw' | 'palmos'  | 'claude-code' | 'custom' | 'cli-bridge';
+export type AiBackendType = 'llm' | 'openclaw' | 'palmos'  | 'claude-code' | 'claude-agent' | 'custom' | 'cli-bridge';
 
 /** Transport method — how ClawScale connects to the backend. */
 export type Transport = 'http' | 'sse' | 'websocket' | 'pty-websocket';
@@ -113,6 +113,10 @@ export interface AiBackendProviderConfig {
   responseFormat?: ResponseFormat;
   /** Auto-generated token for CLI bridge authentication */
   bridgeToken?: string;
+  /** Claude Managed Agents — persisted agent ID (auto-created on first use) */
+  agentId?: string;
+  /** Claude Managed Agents — persisted environment ID (auto-created on first use) */
+  environmentId?: string;
 }
 
 // ── Backend type descriptors ─────────────────────────────────────────────────
@@ -200,6 +204,29 @@ export const BACKEND_TYPE_DESCRIPTORS: Record<AiBackendType, BackendTypeDescript
       { key: 'apiKey', label: 'API Key', inputType: 'password' },
       { key: 'authHeader', label: 'Authorization Header', inputType: 'password', hint: 'Overrides API Key if set' },
       { key: 'systemPrompt', label: 'System Prompt', inputType: 'textarea' },
+    ],
+  },
+  'claude-agent': {
+    type: 'claude-agent',
+    label: 'Claude Agent',
+    transport: 'http',
+    responseFormat: 'json-auto',
+    fields: [
+      { key: 'apiKey', label: 'Anthropic API Key', inputType: 'password', required: true },
+      {
+        key: 'model', label: 'Model', inputType: 'select',
+        selectOptions: [
+          { label: 'Claude Sonnet 4.6', value: 'claude-sonnet-4-6' },
+          { label: 'Claude Opus 4.6', value: 'claude-opus-4-6' },
+          { label: 'Claude Haiku 4.5', value: 'claude-haiku-4-5' },
+          { label: 'Claude Sonnet 4.5', value: 'claude-sonnet-4-5' },
+          { label: 'Claude Opus 4.5', value: 'claude-opus-4-5' },
+        ],
+        defaultValue: 'claude-sonnet-4-6',
+      },
+      { key: 'systemPrompt', label: 'System Prompt', inputType: 'textarea' },
+      { key: 'agentId', label: 'Agent ID', hint: 'Auto-created on first use. Leave blank for auto-setup.' },
+      { key: 'environmentId', label: 'Environment ID', hint: 'Auto-created on first use. Leave blank for auto-setup.' },
     ],
   },
   custom: {

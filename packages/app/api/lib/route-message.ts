@@ -703,5 +703,13 @@ async function runBackend(
     history,
     sender: meta?.sender,
     platform: meta?.platform,
+    onConfigUpdate: (patch) => {
+      // Persist auto-created config (e.g. Claude Agent agentId/environmentId)
+      const existing = (backend.config ?? {}) as Record<string, unknown>;
+      db.aiBackend.update({
+        where: { id: backend.id },
+        data: { config: { ...existing, ...patch } },
+      }).catch((err: unknown) => console.error('[config-update] Failed to persist config:', err));
+    },
   });
 }

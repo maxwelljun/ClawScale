@@ -313,7 +313,7 @@ async function handleOpenAiSdk(
     const url = cfg.baseUrl;
     if (!url) throw new Error('OpenClaw backend: baseUrl is required');
     const apiKey = cfg.apiKey ?? 'openclaw';
-    const model = cfg.model || 'default';
+    const model = cfg.model || 'openclaw/default';
     const client = getOpenAIClient(apiKey, `${url.replace(/\/$/, '')}/v1`);
     const response = await client.chat.completions.create({
       model,
@@ -648,7 +648,7 @@ export async function generateReply(options: GenerateOptions): Promise<string> {
           if (type === 'openclaw' && options.openclaw && process.env.OPENCLAW_DOCKER_ISOLATION !== 'false') {
             const runtime = await ensureOpenClawDockerRuntime(options.openclaw);
             cfg.baseUrl = runtime.baseUrl;
-            cfg.apiKey = cfg.apiKey ?? process.env.OPENCLAW_GATEWAY_TOKEN;
+            cfg.apiKey = cfg.apiKey ?? runtime.gatewayToken;
           }
           return await handleOpenAiSdk(type, cfg, history);
         }

@@ -407,6 +407,7 @@ export function prewarmOpenClawDockerRuntime(identity: OpenClawRuntimeIdentity):
       const headers = {
         Authorization: `Bearer ${runtime.gatewayToken}`,
         'Content-Type': 'application/json',
+        'x-openclaw-scopes': 'operator.read,operator.write',
       };
 
       await fetch(`${runtime.baseUrl}/v1/models`, {

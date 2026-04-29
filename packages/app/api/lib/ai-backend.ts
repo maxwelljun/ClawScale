@@ -355,6 +355,7 @@ async function handleOpenAiSdk(
         headers: {
           'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
+          'x-openclaw-scopes': 'operator.read,operator.write',
           ...(sessionKey ? { 'x-openclaw-session-key': sessionKey } : {}),
           ...(options.platform ? { 'x-openclaw-message-channel': options.platform } : {}),
           ...(providerModel ? { 'x-openclaw-model': providerModel } : {}),

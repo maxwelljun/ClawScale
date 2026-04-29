@@ -43,6 +43,7 @@ const OPENCLAW_MODEL_PROVIDER_API = process.env.OPENCLAW_MODEL_PROVIDER_API ?? '
 const OPENCLAW_DEFAULT_MODEL = process.env.OPENCLAW_DEFAULT_MODEL ?? '';
 const OPENCLAW_PREWARM_CHAT = process.env.OPENCLAW_PREWARM_CHAT !== 'false';
 
+const ensureTasks = new Map<string, Promise<OpenClawDockerRuntime>>();
 const prewarmTasks = new Map<string, Promise<void>>();
 
 function shortHash(input: string): string {
@@ -315,7 +316,7 @@ async function createContainer(identity: OpenClawRuntimeIdentity, name: string, 
   ]);
 }
 
-export async function ensureOpenClawDockerRuntime(identity: OpenClawRuntimeIdentity): Promise<OpenClawDockerRuntime> {
+async function doEnsureOpenClawDockerRuntime(identity: OpenClawRuntimeIdentity): Promise<OpenClawDockerRuntime> {
   const containerName = openClawContainerName(identity);
   const { stateDir, workspaceDir } = openClawRuntimeDirs(identity);
   await fs.mkdir(stateDir, { recursive: true });
@@ -348,6 +349,20 @@ export async function ensureOpenClawDockerRuntime(identity: OpenClawRuntimeIdent
     stateDir,
     workspaceDir,
   };
+}
+
+export async function ensureOpenClawDockerRuntime(identity: OpenClawRuntimeIdentity): Promise<OpenClawDockerRuntime> {
+  const key = openClawContainerName(identity);
+  const existing = ensureTasks.get(key);
+  if (existing) return existing;
+
+  const task = doEnsureOpenClawDockerRuntime(identity);
+  ensureTasks.set(key, task);
+  try {
+    return await task;
+  } finally {
+    ensureTasks.delete(key);
+  }
 }
 
 export function prewarmOpenClawDockerRuntime(identity: OpenClawRuntimeIdentity): void {

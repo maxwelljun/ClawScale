@@ -80,34 +80,31 @@ export async function startTelegramBot(channelId: string, token: string): Promis
 
     void (async () => {
       const startedAt = Date.now();
-      let streamMessageId: number | null = null;
+      const draftId = Math.max(1, Date.now() % 2_147_483_647);
+      let draftSent = false;
       let lastStreamText = '';
-      let lastEditAt = 0;
-      let editChain = Promise.resolve();
+      let lastDraftAt = 0;
+      let draftChain = Promise.resolve();
 
       const telegramText = (value: string) => {
         const text = value.trim();
         return text.length > 4096 ? text.slice(0, 4093) + '...' : text;
       };
 
-      const queueEdit = (nextText: string, force = false) => {
+      const queueDraft = (nextText: string, force = false) => {
         const trimmed = telegramText(nextText);
         if (!trimmed || trimmed === lastStreamText) return;
         const now = Date.now();
-        if (!force && now - lastEditAt < 1500) return;
+        if (!force && now - lastDraftAt < 1000) return;
 
         lastStreamText = trimmed;
-        lastEditAt = now;
-        editChain = editChain.then(async () => {
+        lastDraftAt = now;
+        draftSent = true;
+        draftChain = draftChain.then(async () => {
           try {
-            if (streamMessageId == null) {
-              const sent = await ctx.api.sendMessage(chatId, trimmed);
-              streamMessageId = sent.message_id;
-              return;
-            }
-            await ctx.api.editMessageText(chatId, streamMessageId, trimmed);
+            await ctx.api.sendMessageDraft(chatId, draftId, trimmed);
           } catch (err) {
-            console.warn(`[telegram:${channelId}] Failed to update streamed reply:`, err);
+            console.warn(`[telegram:${channelId}] Failed to send streamed draft:`, err);
           }
         });
       };
@@ -118,16 +115,15 @@ export async function startTelegramBot(channelId: string, token: string): Promis
           text: messageText,
           attachments: messageAttachments,
           meta: { platform: 'telegram', chatId },
-          onStream: ({ text, done }) => queueEdit(text, done),
+          onStream: ({ text, done }) => queueDraft(text, done),
         });
-        await editChain;
+        await draftChain;
         if (result?.reply) {
-          if (streamMessageId == null) {
-            await ctx.api.sendMessage(chatId, result.reply);
-          } else if (result.reply.trim() !== lastStreamText) {
-            queueEdit(result.reply, true);
-            await editChain;
+          if (draftSent && result.reply.trim() !== lastStreamText) {
+            queueDraft(result.reply, true);
+            await draftChain;
           }
+          await ctx.api.sendMessage(chatId, result.reply);
         }
         console.log(`[telegram:${channelId}] Replied to ${externalId} in ${Date.now() - startedAt}ms`);
       } catch (err) {

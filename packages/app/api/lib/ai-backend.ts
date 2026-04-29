@@ -62,6 +62,8 @@ export interface GenerateOptions {
 
 // ── Lazy singletons per config hash ──────────────────────────────────────────
 
+const OPENCLAW_CHAT_TIMEOUT_MS = Number(process.env.OPENCLAW_CHAT_TIMEOUT_MS ?? 180_000);
+const OPENCLAW_MAX_COMPLETION_TOKENS = Number(process.env.OPENCLAW_MAX_COMPLETION_TOKENS ?? 512);
 const openaiClients = new Map<string, OpenAI>();
 const openClawRuntimeQueues = new Map<string, Promise<void>>();
 
@@ -92,6 +94,11 @@ async function runOpenClawQueued<T>(sessionKey: string | undefined, task: () => 
       openClawRuntimeQueues.delete(sessionKey);
     }
   }
+}
+
+function openClawQueueKey(identity: OpenClawRuntimeIdentity | undefined, sessionKey: string | undefined): string | undefined {
+  if (!identity || !sessionKey) return undefined;
+  return `${identity.backendId}:${sessionKey}`;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -336,25 +343,40 @@ async function handleOpenAiSdk(
     const url = cfg.baseUrl;
     if (!url) throw new Error('OpenClaw backend: baseUrl is required');
     const apiKey = cfg.apiKey ?? 'openclaw';
-    const model = cfg.model || 'openclaw/default';
-    const client = getOpenAIClient(apiKey, `${url.replace(/\/$/, '')}/v1`);
+    const configuredModel = cfg.model?.trim();
+    const model = configuredModel?.startsWith('openclaw') ? configuredModel : 'openclaw/default';
+    const providerModel = configuredModel && !configuredModel.startsWith('openclaw') ? configuredModel : undefined;
     const sessionKey = options.openclaw ? openClawSessionKey(options.openclaw) : undefined;
+    const queueKey = openClawQueueKey(options.openclaw, sessionKey);
     const startedAt = Date.now();
-    const response = await runOpenClawQueued(sessionKey, () => client.chat.completions.create({
-      model,
-      messages: history.map(toOpenAiMessage),
-      max_completion_tokens: 1024,
-      ...(sessionKey ? { user: sessionKey } : {}),
-    }, {
-      headers: {
-        ...(sessionKey ? { 'x-openclaw-session-key': sessionKey } : {}),
-        ...(options.platform ? { 'x-openclaw-message-channel': options.platform } : {}),
-      },
-    }));
+    const response = await runOpenClawQueued(queueKey, async () => {
+      const res = await fetch(`${url.replace(/\/$/, '')}/v1/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          ...(sessionKey ? { 'x-openclaw-session-key': sessionKey } : {}),
+          ...(options.platform ? { 'x-openclaw-message-channel': options.platform } : {}),
+          ...(providerModel ? { 'x-openclaw-model': providerModel } : {}),
+        },
+        body: JSON.stringify({
+          model,
+          messages: history.map(toOpenAiMessage),
+          max_completion_tokens: OPENCLAW_MAX_COMPLETION_TOKENS,
+          ...(sessionKey ? { user: sessionKey } : {}),
+        }),
+        signal: AbortSignal.timeout(OPENCLAW_CHAT_TIMEOUT_MS),
+      });
+      const text = await res.text();
+      if (!res.ok) throw new Error(`OpenClaw backend: ${res.status} ${text.slice(0, 500)}`);
+      return JSON.parse(text) as {
+        choices?: Array<{ message?: { content?: string | null } }>;
+      };
+    });
     if (sessionKey) {
       console.log(`[openclaw] Chat completed for ${sessionKey} in ${Date.now() - startedAt}ms`);
     }
-    return response.choices[0]?.message?.content?.trim() ?? '';
+    return response.choices?.[0]?.message?.content?.trim() ?? '';
   }
 
   // llm

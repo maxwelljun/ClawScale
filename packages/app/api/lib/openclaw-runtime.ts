@@ -122,6 +122,9 @@ async function prepareRuntimeConfig(paths: ReturnType<typeof resolveRuntimePaths
     ...existing,
     gateway: {
       ...objectValue(existing.gateway),
+      mode: typeof objectValue(existing.gateway).mode === 'string'
+        ? objectValue(existing.gateway).mode
+        : 'local',
       port: paths.port,
     },
     agents: {

@@ -295,6 +295,7 @@ packages/
 | `OPENCLAW_CHAT_TIMEOUT_MS` | 等待 OpenClaw chat completion 的时长（默认：`180000`） |
 | `OPENCLAW_MAX_COMPLETION_TOKENS` | 发送给 OpenClaw OpenAI-compatible chat completions 的最大输出 token（默认：`512`） |
 | `OPENCLAW_PREWARM_CHAT` | 设为 `true` 时使用 chat completion 预热。默认仅预热 `/v1/models`，避免与真实用户消息竞争 |
+| `OPENCLAW_SHARED_RUNTIME_DEPS` | 在隔离 runtime 之间共享 OpenClaw 插件依赖缓存，同时保持 state/workspace 隔离（默认：`true`） |
 
 ## 许可证
 

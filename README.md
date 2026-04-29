@@ -295,6 +295,7 @@ packages/
 | `OPENCLAW_CHAT_TIMEOUT_MS` | How long to wait for an OpenClaw chat completion (default: `180000`) |
 | `OPENCLAW_MAX_COMPLETION_TOKENS` | Max completion tokens sent to OpenClaw OpenAI-compatible chat completions (default: `512`) |
 | `OPENCLAW_PREWARM_CHAT` | Set to `true` to prewarm with a chat completion. By default ClawScale only prewarms `/v1/models` to avoid competing with real user messages |
+| `OPENCLAW_SHARED_RUNTIME_DEPS` | Share OpenClaw plugin dependency cache across isolated runtimes while keeping state/workspace isolated (default: `true`) |
 
 ## License
 

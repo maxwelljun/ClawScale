@@ -43,6 +43,7 @@ const OPENCLAW_MODEL_PROVIDER_API = process.env.OPENCLAW_MODEL_PROVIDER_API ?? '
 const OPENCLAW_DEFAULT_MODEL = process.env.OPENCLAW_DEFAULT_MODEL ?? '';
 const OPENCLAW_READY_TIMEOUT_MS = Number(process.env.OPENCLAW_READY_TIMEOUT_MS ?? 180_000);
 const OPENCLAW_PREWARM_CHAT = process.env.OPENCLAW_PREWARM_CHAT === 'true';
+const OPENCLAW_SHARED_RUNTIME_DEPS = process.env.OPENCLAW_SHARED_RUNTIME_DEPS !== 'false';
 
 const ensureTasks = new Map<string, Promise<OpenClawDockerRuntime>>();
 const prewarmTasks = new Map<string, Promise<void>>();
@@ -72,6 +73,10 @@ export function openClawRuntimeDirs(identity: OpenClawRuntimeIdentity): { stateD
     stateDir: path.join(root, 'state'),
     workspaceDir: path.join(root, 'workspace'),
   };
+}
+
+function openClawSharedRuntimeDepsDir(): string {
+  return path.resolve(OPENCLAW_DATA_DIR, 'cache', 'plugin-runtime-deps');
 }
 
 export function openClawContainerName(identity: OpenClawRuntimeIdentity): string {
@@ -281,7 +286,13 @@ async function waitForHealth(baseUrl: string): Promise<void> {
   throw new Error(`OpenClaw Docker runtime did not become ready at ${baseUrl}`);
 }
 
-async function createContainer(identity: OpenClawRuntimeIdentity, name: string, stateDir: string, workspaceDir: string): Promise<void> {
+async function createContainer(
+  identity: OpenClawRuntimeIdentity,
+  name: string,
+  stateDir: string,
+  workspaceDir: string,
+  runtimeDepsDir: string | null,
+): Promise<void> {
   const envArgs = [
     '-e', 'HOME=/home/node',
     '-e', 'TERM=xterm-256color',
@@ -312,6 +323,7 @@ async function createContainer(identity: OpenClawRuntimeIdentity, name: string, 
     '-p', '127.0.0.1::18789',
     '-p', '127.0.0.1::18790',
     '-v', `${stateDir}:/home/node/.openclaw`,
+    ...(runtimeDepsDir ? ['-v', `${runtimeDepsDir}:/home/node/.openclaw/plugin-runtime-deps`] : []),
     '-v', `${workspaceDir}:/home/node/.openclaw/workspace`,
     ...envArgs,
     OPENCLAW_IMAGE,
@@ -329,20 +341,24 @@ async function createContainer(identity: OpenClawRuntimeIdentity, name: string, 
 async function doEnsureOpenClawDockerRuntime(identity: OpenClawRuntimeIdentity): Promise<OpenClawDockerRuntime> {
   const containerName = openClawContainerName(identity);
   const { stateDir, workspaceDir } = openClawRuntimeDirs(identity);
+  const runtimeDepsDir = OPENCLAW_SHARED_RUNTIME_DEPS ? openClawSharedRuntimeDepsDir() : null;
   await fs.mkdir(stateDir, { recursive: true });
   await fs.mkdir(workspaceDir, { recursive: true });
+  if (runtimeDepsDir) await fs.mkdir(runtimeDepsDir, { recursive: true });
 
   let inspect = await inspectContainer(containerName);
   if (!inspect) {
     await writeDefaultRuntimeConfig(stateDir, identity);
     await chownRecursive(stateDir, OPENCLAW_CONTAINER_UID, OPENCLAW_CONTAINER_GID);
     await chownRecursive(workspaceDir, OPENCLAW_CONTAINER_UID, OPENCLAW_CONTAINER_GID);
-    await createContainer(identity, containerName, stateDir, workspaceDir);
+    if (runtimeDepsDir) await chownRecursive(runtimeDepsDir, OPENCLAW_CONTAINER_UID, OPENCLAW_CONTAINER_GID);
+    await createContainer(identity, containerName, stateDir, workspaceDir, runtimeDepsDir);
     inspect = await inspectContainer(containerName);
   } else if (!inspect.State?.Running) {
     await writeDefaultRuntimeConfig(stateDir, identity);
     await chownRecursive(stateDir, OPENCLAW_CONTAINER_UID, OPENCLAW_CONTAINER_GID);
     await chownRecursive(workspaceDir, OPENCLAW_CONTAINER_UID, OPENCLAW_CONTAINER_GID);
+    if (runtimeDepsDir) await chownRecursive(runtimeDepsDir, OPENCLAW_CONTAINER_UID, OPENCLAW_CONTAINER_GID);
     await docker(['start', containerName]);
     inspect = await inspectContainer(containerName);
   }

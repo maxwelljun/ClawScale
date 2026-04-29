@@ -168,6 +168,9 @@ function defaultRuntimeConfig(identity: OpenClawRuntimeIdentity): JsonObject {
         mode: 'token',
         token: openClawGatewayToken(identity),
       },
+      controlUi: {
+        allowedOrigins: ['http://localhost:18789', 'http://127.0.0.1:18789'],
+      },
       http: {
         endpoints: {
           chatCompletions: { enabled: true },
@@ -224,6 +227,10 @@ async function writeDefaultRuntimeConfig(stateDir: string, identity: OpenClawRun
     if (isObject(parsed)) existing = parsed;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+
+  if (isObject(existing.agents) && isObject(existing.agents.defaults)) {
+    delete existing.agents.defaults.contextInjection;
   }
 
   await fs.writeFile(configPath, `${JSON.stringify(mergeObject(existing, patch), null, 2)}\n`);

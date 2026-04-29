@@ -93,17 +93,19 @@ function getGatewayPort(inspect: DockerInspect): string | null {
 async function waitForHealth(port: string): Promise<void> {
   const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
-    try {
-      const res = await fetch(`http://127.0.0.1:${port}/healthz`, {
-        signal: AbortSignal.timeout(2_000),
-      });
-      if (res.ok) return;
-    } catch {
-      // Container may still be booting.
+    for (const path of ['/healthz', '/']) {
+      try {
+        const res = await fetch(`http://127.0.0.1:${port}${path}`, {
+          signal: AbortSignal.timeout(2_000),
+        });
+        if (res.status < 500) return;
+      } catch {
+        // Container may still be booting.
+      }
     }
     await new Promise((resolve) => setTimeout(resolve, 1_000));
   }
-  throw new Error(`OpenClaw Docker runtime did not become healthy on port ${port}`);
+  throw new Error(`OpenClaw Docker runtime did not become ready on port ${port}`);
 }
 
 async function createContainer(identity: OpenClawRuntimeIdentity, name: string, stateDir: string, workspaceDir: string): Promise<void> {
@@ -139,6 +141,7 @@ async function createContainer(identity: OpenClawRuntimeIdentity, name: string, 
     'node',
     'dist/index.js',
     'gateway',
+    '--allow-unconfigured',
     '--bind',
     'lan',
     '--port',

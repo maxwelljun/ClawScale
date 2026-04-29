@@ -285,6 +285,12 @@ packages/
 | `OPENCLAW_DOCKER_ISOLATION` | 设为 `false` 时关闭每用户 Docker runtime，直接使用 backend `baseUrl` |
 | `OPENCLAW_DATA_DIR` | 隔离 OpenClaw state/workspace 数据根目录（默认：`./data/tenants`） |
 | `OPENCLAW_GATEWAY_TOKEN` | 传给隔离 OpenClaw gateway 容器的可选 token |
+| `OPENCLAW_DOCKER_NETWORK` | app 到 OpenClaw 容器通信使用的可选 Docker 网络 |
+| `OPENCLAW_MODEL_PROVIDER_ID` | 可选的默认 OpenClaw 模型 provider id，例如 `minimax` |
+| `OPENCLAW_MODEL_PROVIDER_BASE_URL` | 可选的默认 OpenClaw 模型 provider base URL |
+| `OPENCLAW_MODEL_PROVIDER_API_KEY` | 可选的默认 OpenClaw 模型 provider API key |
+| `OPENCLAW_MODEL_PROVIDER_API` | OpenClaw provider API 类型（默认：`openai-completions`） |
+| `OPENCLAW_DEFAULT_MODEL` | 可选的默认 OpenClaw 模型 id |
 
 ## 许可证
 

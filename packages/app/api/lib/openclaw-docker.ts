@@ -35,6 +35,11 @@ const DOCKER_TIMEOUT_MS = Number(process.env.OPENCLAW_DOCKER_TIMEOUT_MS ?? 300_0
 const OPENCLAW_CONTAINER_UID = Number(process.env.OPENCLAW_CONTAINER_UID ?? 1000);
 const OPENCLAW_CONTAINER_GID = Number(process.env.OPENCLAW_CONTAINER_GID ?? 1000);
 const OPENCLAW_DOCKER_NETWORK = process.env.OPENCLAW_DOCKER_NETWORK ?? '';
+const OPENCLAW_MODEL_PROVIDER_ID = process.env.OPENCLAW_MODEL_PROVIDER_ID ?? '';
+const OPENCLAW_MODEL_PROVIDER_BASE_URL = process.env.OPENCLAW_MODEL_PROVIDER_BASE_URL ?? '';
+const OPENCLAW_MODEL_PROVIDER_API_KEY = process.env.OPENCLAW_MODEL_PROVIDER_API_KEY ?? '';
+const OPENCLAW_MODEL_PROVIDER_API = process.env.OPENCLAW_MODEL_PROVIDER_API ?? 'openai-completions';
+const OPENCLAW_DEFAULT_MODEL = process.env.OPENCLAW_DEFAULT_MODEL ?? '';
 
 function shortHash(input: string): string {
   return createHash('sha256').update(input).digest('hex').slice(0, 12);
@@ -110,6 +115,71 @@ async function chownRecursive(target: string, uid: number, gid: number): Promise
   }));
 }
 
+type JsonObject = Record<string, unknown>;
+
+function isObject(value: unknown): value is JsonObject {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function mergeObject(base: JsonObject, patch: JsonObject): JsonObject {
+  const result: JsonObject = { ...base };
+  for (const [key, value] of Object.entries(patch)) {
+    const existing = result[key];
+    result[key] = isObject(existing) && isObject(value) ? mergeObject(existing, value) : value;
+  }
+  return result;
+}
+
+function defaultModelConfig(): JsonObject | null {
+  if (!OPENCLAW_MODEL_PROVIDER_ID || !OPENCLAW_MODEL_PROVIDER_BASE_URL || !OPENCLAW_DEFAULT_MODEL) {
+    return null;
+  }
+
+  return {
+    models: {
+      providers: {
+        [OPENCLAW_MODEL_PROVIDER_ID]: {
+          baseUrl: OPENCLAW_MODEL_PROVIDER_BASE_URL,
+          apiKey: '${OPENCLAW_MODEL_PROVIDER_API_KEY}',
+          api: OPENCLAW_MODEL_PROVIDER_API,
+          models: [
+            {
+              id: OPENCLAW_DEFAULT_MODEL,
+              name: OPENCLAW_DEFAULT_MODEL,
+              reasoning: true,
+              input: ['text'],
+              contextWindow: 200000,
+              maxTokens: 8192,
+            },
+          ],
+        },
+      },
+    },
+    agents: {
+      defaults: {
+        model: { primary: `${OPENCLAW_MODEL_PROVIDER_ID}/${OPENCLAW_DEFAULT_MODEL}` },
+      },
+    },
+  };
+}
+
+async function writeDefaultModelConfig(stateDir: string): Promise<void> {
+  const patch = defaultModelConfig();
+  if (!patch) return;
+
+  const configPath = path.join(stateDir, 'openclaw.json');
+  let existing: JsonObject = {};
+  try {
+    const content = await fs.readFile(configPath, 'utf8');
+    const parsed = JSON.parse(content);
+    if (isObject(parsed)) existing = parsed;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+
+  await fs.writeFile(configPath, `${JSON.stringify(mergeObject(existing, patch), null, 2)}\n`);
+}
+
 async function inspectContainer(name: string): Promise<DockerInspect | null> {
   try {
     const out = await docker(['inspect', name]);
@@ -174,6 +244,9 @@ async function createContainer(identity: OpenClawRuntimeIdentity, name: string, 
   if (OPENCLAW_GATEWAY_TOKEN) {
     envArgs.push('-e', `OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN}`);
   }
+  if (OPENCLAW_MODEL_PROVIDER_API_KEY) {
+    envArgs.push('-e', `OPENCLAW_MODEL_PROVIDER_API_KEY=${OPENCLAW_MODEL_PROVIDER_API_KEY}`);
+  }
 
   await docker([
     'run',
@@ -215,11 +288,13 @@ export async function ensureOpenClawDockerRuntime(identity: OpenClawRuntimeIdent
 
   let inspect = await inspectContainer(containerName);
   if (!inspect) {
+    await writeDefaultModelConfig(stateDir);
     await chownRecursive(stateDir, OPENCLAW_CONTAINER_UID, OPENCLAW_CONTAINER_GID);
     await chownRecursive(workspaceDir, OPENCLAW_CONTAINER_UID, OPENCLAW_CONTAINER_GID);
     await createContainer(identity, containerName, stateDir, workspaceDir);
     inspect = await inspectContainer(containerName);
   } else if (!inspect.State?.Running) {
+    await writeDefaultModelConfig(stateDir);
     await chownRecursive(stateDir, OPENCLAW_CONTAINER_UID, OPENCLAW_CONTAINER_GID);
     await chownRecursive(workspaceDir, OPENCLAW_CONTAINER_UID, OPENCLAW_CONTAINER_GID);
     await docker(['start', containerName]);

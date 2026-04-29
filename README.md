@@ -285,6 +285,12 @@ packages/
 | `OPENCLAW_DOCKER_ISOLATION` | Set to `false` to disable per-user Docker runtimes and use the backend `baseUrl` directly |
 | `OPENCLAW_DATA_DIR` | Root directory for isolated OpenClaw state/workspace data (default: `./data/tenants`) |
 | `OPENCLAW_GATEWAY_TOKEN` | Optional token passed to isolated OpenClaw gateway containers |
+| `OPENCLAW_DOCKER_NETWORK` | Optional Docker network for app-to-OpenClaw container traffic |
+| `OPENCLAW_MODEL_PROVIDER_ID` | Optional default OpenClaw model provider id, e.g. `minimax` |
+| `OPENCLAW_MODEL_PROVIDER_BASE_URL` | Optional default OpenClaw model provider base URL |
+| `OPENCLAW_MODEL_PROVIDER_API_KEY` | Optional default OpenClaw model provider API key |
+| `OPENCLAW_MODEL_PROVIDER_API` | OpenClaw provider API type (default: `openai-completions`) |
+| `OPENCLAW_DEFAULT_MODEL` | Optional default OpenClaw model id |
 
 ## License
 

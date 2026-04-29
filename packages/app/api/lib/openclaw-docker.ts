@@ -17,6 +17,7 @@ interface DockerInspect {
   State?: { Running?: boolean };
   NetworkSettings?: {
     Ports?: Record<string, Array<{ HostIp?: string; HostPort?: string }> | null>;
+    Networks?: Record<string, unknown>;
   };
 }
 
@@ -33,6 +34,7 @@ const OPENCLAW_GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN ?? '';
 const DOCKER_TIMEOUT_MS = Number(process.env.OPENCLAW_DOCKER_TIMEOUT_MS ?? 300_000);
 const OPENCLAW_CONTAINER_UID = Number(process.env.OPENCLAW_CONTAINER_UID ?? 1000);
 const OPENCLAW_CONTAINER_GID = Number(process.env.OPENCLAW_CONTAINER_GID ?? 1000);
+const OPENCLAW_DOCKER_NETWORK = process.env.OPENCLAW_DOCKER_NETWORK ?? '';
 
 function shortHash(input: string): string {
   return createHash('sha256').update(input).digest('hex').slice(0, 12);
@@ -122,12 +124,35 @@ function getGatewayPort(inspect: DockerInspect): string | null {
   return bindings?.[0]?.HostPort ?? null;
 }
 
-async function waitForHealth(port: string): Promise<void> {
+function isConnectedToNetwork(inspect: DockerInspect, network: string): boolean {
+  return Boolean(inspect.NetworkSettings?.Networks?.[network]);
+}
+
+function getRuntimeUrl(containerName: string, inspect: DockerInspect): string {
+  if (OPENCLAW_DOCKER_NETWORK && isConnectedToNetwork(inspect, OPENCLAW_DOCKER_NETWORK)) {
+    return `http://${containerName}:18789`;
+  }
+
+  const port = getGatewayPort(inspect);
+  if (!port) throw new Error(`OpenClaw container ${containerName} has no published gateway port`);
+  return `http://127.0.0.1:${port}`;
+}
+
+async function ensureNetwork(containerName: string, inspect: DockerInspect): Promise<DockerInspect> {
+  if (!OPENCLAW_DOCKER_NETWORK || isConnectedToNetwork(inspect, OPENCLAW_DOCKER_NETWORK)) {
+    return inspect;
+  }
+
+  await docker(['network', 'connect', OPENCLAW_DOCKER_NETWORK, containerName]);
+  return (await inspectContainer(containerName)) ?? inspect;
+}
+
+async function waitForHealth(baseUrl: string): Promise<void> {
   const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
     for (const path of ['/healthz', '/']) {
       try {
-        const res = await fetch(`http://127.0.0.1:${port}${path}`, {
+        const res = await fetch(`${baseUrl}${path}`, {
           signal: AbortSignal.timeout(2_000),
         });
         if (res.status < 500) return;
@@ -137,7 +162,7 @@ async function waitForHealth(port: string): Promise<void> {
     }
     await new Promise((resolve) => setTimeout(resolve, 1_000));
   }
-  throw new Error(`OpenClaw Docker runtime did not become ready on port ${port}`);
+  throw new Error(`OpenClaw Docker runtime did not become ready at ${baseUrl}`);
 }
 
 async function createContainer(identity: OpenClawRuntimeIdentity, name: string, stateDir: string, workspaceDir: string): Promise<void> {
@@ -159,6 +184,7 @@ async function createContainer(identity: OpenClawRuntimeIdentity, name: string, 
     '--cap-drop', 'NET_RAW',
     '--cap-drop', 'NET_ADMIN',
     '--security-opt', 'no-new-privileges:true',
+    ...(OPENCLAW_DOCKER_NETWORK ? ['--network', OPENCLAW_DOCKER_NETWORK] : []),
     '--label', 'clawscale.openclaw=true',
     '--label', `clawscale.tenantId=${identity.tenantId}`,
     '--label', `clawscale.channelId=${identity.channelId}`,
@@ -201,12 +227,12 @@ export async function ensureOpenClawDockerRuntime(identity: OpenClawRuntimeIdent
   }
 
   if (!inspect) throw new Error(`Failed to inspect OpenClaw container ${containerName}`);
-  const port = getGatewayPort(inspect);
-  if (!port) throw new Error(`OpenClaw container ${containerName} has no published gateway port`);
+  inspect = await ensureNetwork(containerName, inspect);
+  const baseUrl = getRuntimeUrl(containerName, inspect);
 
-  await waitForHealth(port);
+  await waitForHealth(baseUrl);
   return {
-    baseUrl: `http://127.0.0.1:${port}`,
+    baseUrl,
     containerName,
     stateDir,
     workspaceDir,

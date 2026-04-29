@@ -31,6 +31,7 @@ services:
       PORT: 4040
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENCLAW_DATA_DIR: ${OPENCLAW_HOST_DATA_DIR:-/root/ClawScale/data/openclaw}
+      OPENCLAW_DOCKER_NETWORK: ${OPENCLAW_DOCKER_NETWORK:-clawscale_default}
     env_file:
       - path: .env
         required: false

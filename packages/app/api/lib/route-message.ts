@@ -61,6 +61,7 @@ export interface InboundMessage {
   text: string;
   attachments?: Attachment[];
   meta?: Record<string, unknown>;
+  onStream?: (update: { backendId: string; backendName: string; text: string; done?: boolean }) => void | Promise<void>;
 }
 
 export interface ReplyEntry {
@@ -77,7 +78,7 @@ export interface RouteResult {
 }
 
 export async function routeInboundMessage(input: InboundMessage): Promise<RouteResult | null> {
-  const { channelId, externalId, displayName, text, attachments, meta } = input;
+  const { channelId, externalId, displayName, text, attachments, meta, onStream } = input;
 
   const platform = (meta?.platform as string) ?? 'unknown';
   console.log(`[inbound] ${platform} | user=${displayName ?? externalId} (${externalId}) | channel=${channelId}`);
@@ -303,6 +304,13 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
           channelId,
           endUserId: endUser!.id,
           currentMessage: { content: currentText, attachments },
+          ...(backends.length === 1 && onStream ? {
+            onStream: (streamText) => onStream({
+              backendId: backend.id,
+              backendName: backend.name,
+              text: backend.name && !hideLabels ? `[${backend.name}]\n${streamText}` : streamText,
+            }),
+          } : {}),
         });
         return { backend, replyText };
       }),
@@ -318,6 +326,14 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
             metadata: { backendName: backend.name },
           },
         });
+        if (backends.length === 1 && onStream) {
+          await onStream({
+            backendId: backend.id,
+            backendName: backend.name,
+            text: backend.name && !hideLabels ? `[${backend.name}]\n${replyText}` : replyText,
+            done: true,
+          });
+        }
       } else {
         console.error('[backend error]', (result as PromiseRejectedResult).reason);
       }
@@ -711,6 +727,7 @@ async function runBackend(
     channelId?: string;
     endUserId?: string;
     currentMessage?: { content: string; attachments?: Attachment[] };
+    onStream?: (text: string) => void | Promise<void>;
   },
 ): Promise<string> {
   const history = backend.type === 'openclaw' && meta?.currentMessage
@@ -742,6 +759,7 @@ async function runBackend(
       : {}),
     sender: meta?.sender,
     platform: meta?.platform,
+    onStream: meta?.onStream,
     onConfigUpdate: (patch) => {
       // Persist auto-created config (e.g. Claude Agent agentId/environmentId)
       const existing = (backend.config ?? {}) as Record<string, unknown>;

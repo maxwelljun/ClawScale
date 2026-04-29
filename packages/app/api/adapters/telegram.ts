@@ -80,14 +80,55 @@ export async function startTelegramBot(channelId: string, token: string): Promis
 
     void (async () => {
       const startedAt = Date.now();
+      let streamMessageId: number | null = null;
+      let lastStreamText = '';
+      let lastEditAt = 0;
+      let editChain = Promise.resolve();
+
+      const telegramText = (value: string) => {
+        const text = value.trim();
+        return text.length > 4096 ? text.slice(0, 4093) + '...' : text;
+      };
+
+      const queueEdit = (nextText: string, force = false) => {
+        const trimmed = telegramText(nextText);
+        if (!trimmed || trimmed === lastStreamText) return;
+        const now = Date.now();
+        if (!force && now - lastEditAt < 1500) return;
+
+        lastStreamText = trimmed;
+        lastEditAt = now;
+        editChain = editChain.then(async () => {
+          try {
+            if (streamMessageId == null) {
+              const sent = await ctx.api.sendMessage(chatId, trimmed);
+              streamMessageId = sent.message_id;
+              return;
+            }
+            await ctx.api.editMessageText(chatId, streamMessageId, trimmed);
+          } catch (err) {
+            console.warn(`[telegram:${channelId}] Failed to update streamed reply:`, err);
+          }
+        });
+      };
+
       try {
         const result = await routeInboundMessage({
           channelId, externalId, displayName,
           text: messageText,
           attachments: messageAttachments,
           meta: { platform: 'telegram', chatId },
+          onStream: ({ text, done }) => queueEdit(text, done),
         });
-        if (result?.reply) await ctx.api.sendMessage(chatId, result.reply);
+        await editChain;
+        if (result?.reply) {
+          if (streamMessageId == null) {
+            await ctx.api.sendMessage(chatId, result.reply);
+          } else if (result.reply.trim() !== lastStreamText) {
+            queueEdit(result.reply, true);
+            await editChain;
+          }
+        }
         console.log(`[telegram:${channelId}] Replied to ${externalId} in ${Date.now() - startedAt}ms`);
       } catch (err) {
         console.error(`[telegram:${channelId}] Error routing message:`, err);

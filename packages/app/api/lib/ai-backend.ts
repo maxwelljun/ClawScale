@@ -58,12 +58,15 @@ export interface GenerateOptions {
   platform?: string;
   /** Callback to persist config changes (e.g. auto-created agentId/environmentId) */
   onConfigUpdate?: (patch: Partial<AiBackendProviderConfig>) => void;
+  /** Receives accumulated text while a backend streams. */
+  onStream?: (text: string) => void | Promise<void>;
 }
 
 // ── Lazy singletons per config hash ──────────────────────────────────────────
 
-const OPENCLAW_CHAT_TIMEOUT_MS = Number(process.env.OPENCLAW_CHAT_TIMEOUT_MS ?? 180_000);
+const OPENCLAW_CHAT_TIMEOUT_MS = Number(process.env.OPENCLAW_CHAT_TIMEOUT_MS ?? 600_000);
 const OPENCLAW_MAX_COMPLETION_TOKENS = Number(process.env.OPENCLAW_MAX_COMPLETION_TOKENS ?? 512);
+const OPENCLAW_STREAM = process.env.OPENCLAW_STREAM !== 'false';
 const openaiClients = new Map<string, OpenAI>();
 const openClawRuntimeQueues = new Map<string, Promise<void>>();
 
@@ -160,6 +163,66 @@ async function readSseStream(body: ReadableStream<Uint8Array>): Promise<string> 
         // Plain text chunk
         if (data) accumulated += data;
       }
+    }
+  }
+
+  return accumulated.trim();
+}
+
+async function readOpenAiChatCompletionStream(
+  body: ReadableStream<Uint8Array>,
+  onStream?: GenerateOptions['onStream'],
+): Promise<string> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let accumulated = '';
+  let buffer = '';
+  let doneSeen = false;
+
+  const appendData = (data: string) => {
+    if (data === '[DONE]') {
+      doneSeen = true;
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(data) as {
+        choices?: Array<{
+          delta?: { content?: string | null };
+          message?: { content?: string | null };
+          text?: string | null;
+        }>;
+      };
+      const choice = parsed.choices?.[0];
+      const chunk = choice?.delta?.content ?? choice?.message?.content ?? choice?.text;
+      if (chunk) {
+        accumulated += chunk;
+        void onStream?.(accumulated);
+      }
+    } catch {
+      if (data) {
+        accumulated += data;
+        void onStream?.(accumulated);
+      }
+    }
+  };
+
+  while (!doneSeen) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const events = buffer.split('\n\n');
+    buffer = events.pop() ?? '';
+
+    for (const event of events) {
+      const dataLines = event
+        .split('\n')
+        .filter((line) => line.startsWith('data:'))
+        .map((line) => line.slice(5).trim())
+        .filter(Boolean);
+      if (dataLines.length > 0) appendData(dataLines.join('\n'));
+      if (doneSeen) break;
     }
   }
 
@@ -337,7 +400,7 @@ async function handleOpenAiSdk(
   type: AiBackendType,
   cfg: AiBackendProviderConfig,
   history: HistoryMessage[],
-  options: Pick<GenerateOptions, 'openclaw' | 'platform'> = {},
+  options: Pick<GenerateOptions, 'openclaw' | 'platform' | 'onStream'> = {},
 ): Promise<string> {
   if (type === 'openclaw') {
     const url = cfg.baseUrl;
@@ -354,6 +417,7 @@ async function handleOpenAiSdk(
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${apiKey}`,
+          'Accept': OPENCLAW_STREAM ? 'text/event-stream' : 'application/json',
           'Content-Type': 'application/json',
           'x-openclaw-scopes': 'operator.read,operator.write',
           ...(sessionKey ? { 'x-openclaw-session-key': sessionKey } : {}),
@@ -364,20 +428,29 @@ async function handleOpenAiSdk(
           model,
           messages: history.map(toOpenAiMessage),
           max_completion_tokens: OPENCLAW_MAX_COMPLETION_TOKENS,
+          ...(OPENCLAW_STREAM ? { stream: true } : {}),
           ...(sessionKey ? { user: sessionKey } : {}),
         }),
         signal: AbortSignal.timeout(OPENCLAW_CHAT_TIMEOUT_MS),
       });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`OpenClaw backend: ${res.status} ${text.slice(0, 500)}`);
+      }
+      const contentType = res.headers.get('content-type') ?? '';
+      if (OPENCLAW_STREAM && contentType.includes('text/event-stream') && res.body) {
+        return { content: await readOpenAiChatCompletionStream(res.body, options.onStream) };
+      }
       const text = await res.text();
-      if (!res.ok) throw new Error(`OpenClaw backend: ${res.status} ${text.slice(0, 500)}`);
-      return JSON.parse(text) as {
+      const parsed = JSON.parse(text) as {
         choices?: Array<{ message?: { content?: string | null } }>;
       };
+      return { content: parsed.choices?.[0]?.message?.content?.trim() ?? '' };
     });
     if (sessionKey) {
       console.log(`[openclaw] Chat completed for ${sessionKey} in ${Date.now() - startedAt}ms`);
     }
-    return response.choices?.[0]?.message?.content?.trim() ?? '';
+    return response.content;
   }
 
   // llm

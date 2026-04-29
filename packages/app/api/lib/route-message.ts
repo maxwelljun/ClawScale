@@ -18,6 +18,7 @@ import { runClawscaleAgent, buildSelectionMenu } from './clawscale-agent.js';
 import type { AgentLlmConfig } from './clawscale-agent.js';
 import { parseCommand, resolveTarget, resolveAddRemoveArg, formatCommandHelp } from './slash-commands.js';
 import type { AiBackendType, AiBackendProviderConfig } from '../../shared/index.js';
+import { isOpenClawBinEnabled } from './openclaw-runtime.js';
 
 // ── Per-user rate limiter (in-memory) ────────────────────────────────────────
 
@@ -287,6 +288,11 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
         const replyText = await runBackend(backend, historyConvIds, palmosCtx, {
           sender: endUser!.name ?? displayName,
           platform,
+          tenantId,
+          channelId,
+          endUserId: endUser!.id,
+          text,
+          attachments,
         });
         return { backend, replyText };
       }),
@@ -688,9 +694,20 @@ async function runBackend(
   backend: { id: string; type: string; config: unknown },
   conversationIds: string | string[],
   palmosCtx?: { endUserId: string; tenantId: string; conversationId: string; displayName?: string },
-  meta?: { sender?: string; platform?: string },
+  meta?: {
+    sender?: string;
+    platform?: string;
+    tenantId?: string;
+    channelId?: string;
+    endUserId?: string;
+    text?: string;
+    attachments?: Attachment[];
+  },
 ): Promise<string> {
-  const history = await loadHistory(conversationIds, backend.id);
+  const useLocalOpenClaw = backend.type === 'openclaw' && isOpenClawBinEnabled();
+  const history = useLocalOpenClaw
+    ? [{ role: 'user' as const, content: meta?.text ?? '', ...(meta?.attachments?.length ? { attachments: meta.attachments } : {}) }]
+    : await loadHistory(conversationIds, backend.id);
   const cfg = (backend.config ?? {}) as AiBackendProviderConfig;
   // Pass backend ID through for cli-bridge WebSocket lookup
   (cfg as any).__backendId = backend.id;
@@ -703,6 +720,16 @@ async function runBackend(
     history,
     sender: meta?.sender,
     platform: meta?.platform,
+    ...(backend.type === 'openclaw'
+      ? {
+          openClawRuntime: {
+            tenantId: meta?.tenantId ?? '',
+            channelId: meta?.channelId ?? '',
+            endUserId: meta?.endUserId ?? '',
+            backendId: backend.id,
+          },
+        }
+      : {}),
     onConfigUpdate: (patch) => {
       // Persist auto-created config (e.g. Claude Agent agentId/environmentId)
       const existing = (backend.config ?? {}) as Record<string, unknown>;

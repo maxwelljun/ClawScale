@@ -283,7 +283,22 @@ packages/
 | `WHATSAPP_AUTH_DIR` | WhatsApp session files directory (default: `./data/whatsapp`) |
 | `OPENCLAW_BIN` | Path to OpenClaw binary (optional) |
 | `OPENCLAW_PORT_BASE` | Dynamic port assignment base (default: `19000`) |
-| `OPENCLAW_DATA_DIR` | Per-tenant OpenClaw data directory (default: `./data/tenants`) |
+| `OPENCLAW_DATA_DIR` | Isolated OpenClaw runtime data directory (default: `./data/tenants`) |
+| `OPENCLAW_ARGS` | Optional OpenClaw command template (default: `--profile {profile} gateway --port {port}`) |
+
+### Local OpenClaw runtime isolation
+
+When `OPENCLAW_BIN` is set, OpenClaw backends do not require `baseUrl`. ClawScale starts a dedicated OpenClaw gateway for each `tenantId + channelId + endUserId + backendId` and connects to its local OpenAI-compatible `/v1` endpoint.
+
+Each runtime is stored under:
+
+```text
+OPENCLAW_DATA_DIR/{tenantId}/{channelId}/{endUserId}/{backendId}/
+├── state/
+└── workspace/
+```
+
+ClawScale sends only the current user message to local OpenClaw. Conversation memory, sessions, tools, and files are managed by the isolated OpenClaw `state/` and `workspace/` directories instead of by ClawScale database history. By default the process is launched as `openclaw --profile {profile} gateway --port {port}`. Override the arguments with `OPENCLAW_ARGS`; supported placeholders are `{profile}`, `{port}`, `{stateDir}`, and `{workspaceDir}`.
 
 ## License
 

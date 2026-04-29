@@ -177,7 +177,7 @@ export const BACKEND_TYPE_DESCRIPTORS: Record<AiBackendType, BackendTypeDescript
     transport: 'http',
     responseFormat: 'json-auto',
     fields: [
-      { key: 'baseUrl', label: 'Base URL', required: true, hint: '/v1 is appended automatically' },
+      { key: 'baseUrl', label: 'Base URL', hint: 'Required only without OPENCLAW_BIN; /v1 is appended automatically' },
       { key: 'apiKey', label: 'API Key', inputType: 'password' },
       { key: 'model', label: 'Model' },
     ],

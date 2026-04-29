@@ -18,6 +18,7 @@ import type {
   ResponseFormat,
 } from '../../shared/index.js';
 import { BACKEND_TYPE_DESCRIPTORS } from '../../shared/index.js';
+import { getOpenClawRuntime, isOpenClawBinEnabled, type OpenClawRuntimeContext } from './openclaw-runtime.js';
 
 export interface PalmosContext {
   endUserId: string;
@@ -53,6 +54,7 @@ export interface GenerateOptions {
   sender?: string;
   /** Chat platform the message came from (e.g. "telegram", "discord") */
   platform?: string;
+  openClawRuntime?: OpenClawRuntimeContext;
   /** Callback to persist config changes (e.g. auto-created agentId/environmentId) */
   onConfigUpdate?: (patch: Partial<AiBackendProviderConfig>) => void;
 }
@@ -97,6 +99,11 @@ function resolveTransport(descriptor: BackendTypeDescriptor, cfg: AiBackendProvi
 function resolveResponseFormat(descriptor: BackendTypeDescriptor, cfg: AiBackendProviderConfig): ResponseFormat {
   if (descriptor.type === 'custom' && cfg.responseFormat) return cfg.responseFormat;
   return descriptor.responseFormat;
+}
+
+function requiredOpenClawRuntimeContext(ctx: OpenClawRuntimeContext | undefined): OpenClawRuntimeContext {
+  if (!ctx) throw new Error('OpenClaw backend: runtime context is required when OPENCLAW_BIN is configured');
+  return ctx;
 }
 
 // ── SSE stream readers ──────────────────────────────────────────────────────
@@ -305,10 +312,13 @@ async function handleOpenAiSdk(
   type: AiBackendType,
   cfg: AiBackendProviderConfig,
   history: HistoryMessage[],
+  runtimeCtx?: OpenClawRuntimeContext,
 ): Promise<string> {
   if (type === 'openclaw') {
-    const url = cfg.baseUrl;
-    if (!url) throw new Error('OpenClaw backend: baseUrl is required');
+    const url = isOpenClawBinEnabled()
+      ? (await getOpenClawRuntime(requiredOpenClawRuntimeContext(runtimeCtx))).baseUrl
+      : cfg.baseUrl;
+    if (!url) throw new Error('OpenClaw backend: baseUrl is required when OPENCLAW_BIN is not configured');
     const apiKey = cfg.apiKey ?? 'openclaw';
     const model = cfg.model || 'default';
     const client = getOpenAIClient(apiKey, `${url.replace(/\/$/, '')}/v1`);
@@ -642,7 +652,7 @@ export async function generateReply(options: GenerateOptions): Promise<string> {
         }
         // llm and openclaw use the OpenAI SDK client
         if (type === 'llm' || type === 'openclaw') {
-          return await handleOpenAiSdk(type, cfg, history);
+          return await handleOpenAiSdk(type, cfg, history, options.openClawRuntime);
         }
         return await handleFetch(descriptor, cfg, history, extraBody);
       }

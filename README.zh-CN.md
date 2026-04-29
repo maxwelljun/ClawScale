@@ -283,7 +283,22 @@ packages/
 | `WHATSAPP_AUTH_DIR` | WhatsApp 会话文件目录（默认：`./data/whatsapp`） |
 | `OPENCLAW_BIN` | OpenClaw 二进制文件路径（可选） |
 | `OPENCLAW_PORT_BASE` | 动态端口分配基数（默认：`19000`） |
-| `OPENCLAW_DATA_DIR` | 每租户 OpenClaw 数据目录（默认：`./data/tenants`） |
+| `OPENCLAW_DATA_DIR` | 隔离的 OpenClaw 运行时数据目录（默认：`./data/tenants`） |
+| `OPENCLAW_ARGS` | 可选 OpenClaw 命令模板（默认：`--profile {profile} gateway --port {port}`） |
+
+### 本地 OpenClaw 运行时隔离
+
+设置 `OPENCLAW_BIN` 后，OpenClaw 后端不再要求填写 `baseUrl`。ClawScale 会按 `tenantId + channelId + endUserId + backendId` 启动独立 OpenClaw gateway，并连接到它本地的 OpenAI 兼容 `/v1` 端点。
+
+每个运行时数据目录如下：
+
+```text
+OPENCLAW_DATA_DIR/{tenantId}/{channelId}/{endUserId}/{backendId}/
+├── state/
+└── workspace/
+```
+
+本地 OpenClaw 模式下，ClawScale 只发送当前用户消息。对话记忆、session、tool 和文件状态由隔离的 OpenClaw `state/` 与 `workspace/` 管理，不再依赖 ClawScale 数据库历史做隔离。默认启动命令为 `openclaw --profile {profile} gateway --port {port}`；可以通过 `OPENCLAW_ARGS` 覆盖，支持 `{profile}`、`{port}`、`{stateDir}`、`{workspaceDir}` 占位符。
 
 ## 许可证
 

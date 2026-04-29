@@ -18,7 +18,7 @@ import type {
   ResponseFormat,
 } from '../../shared/index.js';
 import { BACKEND_TYPE_DESCRIPTORS } from '../../shared/index.js';
-import { ensureOpenClawDockerRuntime, type OpenClawRuntimeIdentity } from './openclaw-docker.js';
+import { ensureOpenClawDockerRuntime, openClawSessionKey, type OpenClawRuntimeIdentity } from './openclaw-docker.js';
 
 export interface PalmosContext {
   endUserId: string;
@@ -308,6 +308,7 @@ async function handleOpenAiSdk(
   type: AiBackendType,
   cfg: AiBackendProviderConfig,
   history: HistoryMessage[],
+  options: Pick<GenerateOptions, 'openclaw' | 'platform'> = {},
 ): Promise<string> {
   if (type === 'openclaw') {
     const url = cfg.baseUrl;
@@ -315,10 +316,17 @@ async function handleOpenAiSdk(
     const apiKey = cfg.apiKey ?? 'openclaw';
     const model = cfg.model || 'openclaw/default';
     const client = getOpenAIClient(apiKey, `${url.replace(/\/$/, '')}/v1`);
+    const sessionKey = options.openclaw ? openClawSessionKey(options.openclaw) : undefined;
     const response = await client.chat.completions.create({
       model,
       messages: history.map(toOpenAiMessage),
       max_completion_tokens: 1024,
+      ...(sessionKey ? { user: sessionKey } : {}),
+    }, {
+      headers: {
+        ...(sessionKey ? { 'x-openclaw-session-key': sessionKey } : {}),
+        ...(options.platform ? { 'x-openclaw-message-channel': options.platform } : {}),
+      },
     });
     return response.choices[0]?.message?.content?.trim() ?? '';
   }
@@ -650,7 +658,7 @@ export async function generateReply(options: GenerateOptions): Promise<string> {
             cfg.baseUrl = runtime.baseUrl;
             cfg.apiKey = cfg.apiKey ?? runtime.gatewayToken;
           }
-          return await handleOpenAiSdk(type, cfg, history);
+          return await handleOpenAiSdk(type, cfg, history, options);
         }
         return await handleFetch(descriptor, cfg, history, extraBody);
       }

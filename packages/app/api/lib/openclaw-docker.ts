@@ -93,6 +93,15 @@ function openClawGatewayToken(identity: OpenClawRuntimeIdentity): string {
   ].join(':')).digest('hex');
 }
 
+export function openClawSessionKey(identity: OpenClawRuntimeIdentity): string {
+  return `clawscale:${shortHash([
+    identity.tenantId,
+    identity.channelId,
+    identity.endUserId,
+    identity.backendId,
+  ].join(':'))}`;
+}
+
 async function docker(args: string[]): Promise<string> {
   const { stdout } = await execFileAsync('docker', args, {
     maxBuffer: 1024 * 1024,

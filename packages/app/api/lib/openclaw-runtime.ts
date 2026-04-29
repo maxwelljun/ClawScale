@@ -122,6 +122,21 @@ async function prepareRuntimeConfig(paths: ReturnType<typeof resolveRuntimePaths
     ...existing,
     gateway: {
       ...objectValue(existing.gateway),
+      auth: {
+        ...objectValue(objectValue(existing.gateway).auth),
+        mode: 'none',
+      },
+      bind: objectValue(existing.gateway).bind ?? 'loopback',
+      http: {
+        ...objectValue(objectValue(existing.gateway).http),
+        endpoints: {
+          ...objectValue(objectValue(objectValue(existing.gateway).http).endpoints),
+          chatCompletions: {
+            ...objectValue(objectValue(objectValue(objectValue(existing.gateway).http).endpoints).chatCompletions),
+            enabled: true,
+          },
+        },
+      },
       mode: typeof objectValue(existing.gateway).mode === 'string'
         ? objectValue(existing.gateway).mode
         : 'local',

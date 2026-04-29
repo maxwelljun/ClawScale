@@ -300,14 +300,13 @@ OPENCLAW_DATA_DIR/{tenantId}/{channelId}/{endUserId}/{backendId}/
 
 ClawScale sends only the current user message to local OpenClaw. Conversation memory, sessions, tools, and files are managed by the isolated OpenClaw `state/` and `workspace/` directories instead of by ClawScale database history. By default the process is launched as `openclaw --profile {profile} gateway --port {port}`. Override the arguments with `OPENCLAW_ARGS`; supported placeholders are `{profile}`, `{port}`, `{stateDir}`, and `{workspaceDir}`.
 
-If ClawScale runs in Docker and `openclaw` is installed on the host, mount the full OpenClaw install directory into the app container with the overlay compose file. Do not mount only `/usr/bin/openclaw`: the entry script also needs its `dist/` build output.
+If ClawScale runs in Docker, the app image installs OpenClaw from npm during the image build. Use the overlay compose file to enable local OpenClaw mode and persist isolated runtime data:
 
 ```bash
-OPENCLAW_HOST_DIR=/path/to/openclaw \
 docker compose -f docker-compose.yml -f docker-compose.openclaw.yml up -d --build
 ```
 
-`OPENCLAW_HOST_DIR` must contain both the `openclaw` entry file and `dist/`. The mounted binary must be executable inside the Linux container. If your host binary is for another OS or libc, install/build OpenClaw inside the image instead of bind-mounting it.
+By default the overlay uses `/usr/local/bin/openclaw`, which is created by `npm install -g openclaw` in the Docker image. To pin a specific OpenClaw npm version, build with `--build-arg OPENCLAW_NPM_PACKAGE=openclaw@<version>`.
 
 For MiniMax China Coding Plan, set the key in `.env`:
 

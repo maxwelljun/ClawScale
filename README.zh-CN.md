@@ -300,14 +300,13 @@ OPENCLAW_DATA_DIR/{tenantId}/{channelId}/{endUserId}/{backendId}/
 
 本地 OpenClaw 模式下，ClawScale 只发送当前用户消息。对话记忆、session、tool 和文件状态由隔离的 OpenClaw `state/` 与 `workspace/` 管理，不再依赖 ClawScale 数据库历史做隔离。默认启动命令为 `openclaw --profile {profile} gateway --port {port}`；可以通过 `OPENCLAW_ARGS` 覆盖，支持 `{profile}`、`{port}`、`{stateDir}`、`{workspaceDir}` 占位符。
 
-如果 ClawScale 运行在 Docker 中，而 `openclaw` 安装在宿主机上，需要通过 overlay compose 文件把完整 OpenClaw 安装目录挂载到 app 容器。不要只挂载 `/usr/bin/openclaw`：这个入口脚本还依赖同安装目录里的 `dist/` 构建产物。
+如果 ClawScale 运行在 Docker 中，app 镜像会在构建阶段从 npm 安装 OpenClaw。使用 overlay compose 文件开启本地 OpenClaw 模式并持久化隔离运行时数据：
 
 ```bash
-OPENCLAW_HOST_DIR=/path/to/openclaw \
 docker compose -f docker-compose.yml -f docker-compose.openclaw.yml up -d --build
 ```
 
-`OPENCLAW_HOST_DIR` 必须同时包含 `openclaw` 入口文件和 `dist/`。挂载后的二进制必须能在 Linux 容器内执行。如果宿主机二进制属于其他操作系统或 libc，请改为在镜像内安装/构建 OpenClaw，而不是 bind mount。
+overlay 默认使用 `/usr/local/bin/openclaw`，该路径由 Docker 镜像里的 `npm install -g openclaw` 创建。如需固定 OpenClaw npm 版本，构建时传入 `--build-arg OPENCLAW_NPM_PACKAGE=openclaw@<version>`。
 
 如果要使用 MiniMax 国内 Coding Plan，在 `.env` 中设置密钥：
 

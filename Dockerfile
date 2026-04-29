@@ -1,5 +1,7 @@
 FROM node:22-alpine
 RUN corepack enable && corepack prepare pnpm@latest --activate
+ARG OPENCLAW_NPM_PACKAGE=openclaw
+RUN npm install -g "${OPENCLAW_NPM_PACKAGE}"
 
 WORKDIR /app
 COPY . .

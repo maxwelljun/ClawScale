@@ -320,7 +320,7 @@ async function handleOpenAiSdk(
       : cfg.baseUrl;
     if (!url) throw new Error('OpenClaw backend: baseUrl is required when OPENCLAW_BIN is not configured');
     const apiKey = cfg.apiKey ?? 'openclaw';
-    const model = cfg.model || 'default';
+    const model = cfg.model || (isOpenClawBinEnabled() ? 'openclaw/default' : 'default');
     const client = getOpenAIClient(apiKey, `${url.replace(/\/$/, '')}/v1`);
     const response = await client.chat.completions.create({
       model,

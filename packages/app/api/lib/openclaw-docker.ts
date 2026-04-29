@@ -41,6 +41,9 @@ const OPENCLAW_MODEL_PROVIDER_BASE_URL = process.env.OPENCLAW_MODEL_PROVIDER_BAS
 const OPENCLAW_MODEL_PROVIDER_API_KEY = process.env.OPENCLAW_MODEL_PROVIDER_API_KEY ?? '';
 const OPENCLAW_MODEL_PROVIDER_API = process.env.OPENCLAW_MODEL_PROVIDER_API ?? 'openai-completions';
 const OPENCLAW_DEFAULT_MODEL = process.env.OPENCLAW_DEFAULT_MODEL ?? '';
+const OPENCLAW_PREWARM_CHAT = process.env.OPENCLAW_PREWARM_CHAT !== 'false';
+
+const prewarmTasks = new Map<string, Promise<void>>();
 
 function shortHash(input: string): string {
   return createHash('sha256').update(input).digest('hex').slice(0, 12);
@@ -345,4 +348,46 @@ export async function ensureOpenClawDockerRuntime(identity: OpenClawRuntimeIdent
     stateDir,
     workspaceDir,
   };
+}
+
+export function prewarmOpenClawDockerRuntime(identity: OpenClawRuntimeIdentity): void {
+  const key = openClawContainerName(identity);
+  if (prewarmTasks.has(key)) return;
+
+  const task = (async () => {
+    const startedAt = Date.now();
+    try {
+      const runtime = await ensureOpenClawDockerRuntime(identity);
+      const headers = {
+        Authorization: `Bearer ${runtime.gatewayToken}`,
+        'Content-Type': 'application/json',
+      };
+
+      await fetch(`${runtime.baseUrl}/v1/models`, {
+        headers,
+        signal: AbortSignal.timeout(30_000),
+      });
+
+      if (OPENCLAW_PREWARM_CHAT) {
+        await fetch(`${runtime.baseUrl}/v1/chat/completions`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            model: 'openclaw/default',
+            messages: [{ role: 'user', content: 'Reply with OK.' }],
+            max_completion_tokens: 8,
+            user: '__clawscale_prewarm__',
+          }),
+          signal: AbortSignal.timeout(180_000),
+        });
+      }
+
+      console.log(`[openclaw] Prewarmed ${runtime.containerName} in ${Date.now() - startedAt}ms`);
+    } catch (error) {
+      console.warn(`[openclaw] Prewarm failed for ${key}:`, error);
+      prewarmTasks.delete(key);
+    }
+  })();
+
+  prewarmTasks.set(key, task);
 }

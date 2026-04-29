@@ -14,6 +14,7 @@
 import { db } from '../db/index.js';
 import { generateId } from './id.js';
 import { generateReply } from './ai-backend.js';
+import { prewarmOpenClawDockerRuntime } from './openclaw-docker.js';
 import { runClawscaleAgent, buildSelectionMenu } from './clawscale-agent.js';
 import type { AgentLlmConfig } from './clawscale-agent.js';
 import { parseCommand, resolveTarget, resolveAddRemoveArg, formatCommandHelp } from './slash-commands.js';
@@ -172,6 +173,17 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     where: { tenantId, isActive: true },
     orderBy: { createdAt: 'asc' },
   });
+  const openClawBackends = allBackends.filter((backend) => backend.type === 'openclaw');
+  if (isNewUser && openClawBackends.length > 0 && process.env.OPENCLAW_DOCKER_ISOLATION !== 'false') {
+    for (const backend of openClawBackends) {
+      prewarmOpenClawDockerRuntime({
+        tenantId,
+        channelId,
+        endUserId: endUser.id,
+        backendId: backend.id,
+      });
+    }
+  }
 
   const replies: ReplyEntry[] = [];
 

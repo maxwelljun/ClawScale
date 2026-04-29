@@ -291,6 +291,7 @@ packages/
 | `OPENCLAW_MODEL_PROVIDER_API_KEY` | 可选的默认 OpenClaw 模型 provider API key |
 | `OPENCLAW_MODEL_PROVIDER_API` | OpenClaw provider API 类型（默认：`openai-completions`） |
 | `OPENCLAW_DEFAULT_MODEL` | 可选的默认 OpenClaw 模型 id |
+| `OPENCLAW_PREWARM_CHAT` | 设为 `false` 时跳过预热 chat completion，仅预热 `/v1/models` |
 
 ## 许可证
 

@@ -291,6 +291,7 @@ packages/
 | `OPENCLAW_MODEL_PROVIDER_API_KEY` | Optional default OpenClaw model provider API key |
 | `OPENCLAW_MODEL_PROVIDER_API` | OpenClaw provider API type (default: `openai-completions`) |
 | `OPENCLAW_DEFAULT_MODEL` | Optional default OpenClaw model id |
+| `OPENCLAW_PREWARM_CHAT` | Set to `false` to skip the prewarm chat completion and only prewarm `/v1/models` |
 
 ## License
 

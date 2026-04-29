@@ -613,7 +613,7 @@ async function handleClaudeAgent(
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-const CONNECTION_ERROR_CODES = new Set(['ECONNREFUSED', 'ENOTFOUND', 'ETIMEDOUT', 'ECONNRESET']);
+const CONNECTION_ERROR_CODES = new Set(['ECONNREFUSED', 'ENOTFOUND', 'ETIMEDOUT', 'ECONNRESET', 'ENOENT', 'EACCES']);
 
 function isConnectionError(err: unknown): string | null {
   const code = (err as { cause?: { code?: string } })?.cause?.code

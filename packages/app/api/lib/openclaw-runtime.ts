@@ -60,6 +60,14 @@ export async function getOpenClawRuntime(ctx: OpenClawRuntimeContext): Promise<{
   proc.stderr.on('data', (chunk) => {
     console.warn(`[openclaw:${paths.profile}] ${String(chunk).trimEnd()}`);
   });
+  const startupError = new Promise<never>((_, reject) => {
+    proc.once('error', (err) => {
+      const current = instances.get(key);
+      if (current?.proc === proc) instances.delete(key);
+      console.error(`[openclaw:${paths.profile}] failed to start ${bin}: ${formatError(err)}`);
+      reject(err);
+    });
+  });
   proc.on('exit', (code, signal) => {
     const current = instances.get(key);
     if (current?.proc === proc) instances.delete(key);
@@ -73,7 +81,7 @@ export async function getOpenClawRuntime(ctx: OpenClawRuntimeContext): Promise<{
     stateDir: paths.profileStateDir,
     workspaceDir: paths.workspaceDir,
     proc,
-    ready: waitForGateway(`http://127.0.0.1:${paths.port}`, proc),
+    ready: Promise.race([waitForGateway(`http://127.0.0.1:${paths.port}`, proc), startupError]),
   };
   instances.set(key, instance);
   registerCleanup();

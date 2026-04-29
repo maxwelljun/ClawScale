@@ -309,14 +309,13 @@ docker compose -f docker-compose.yml -f docker-compose.openclaw.yml up -d --buil
 
 `OPENCLAW_HOST_DIR` 必须同时包含 `openclaw` 入口文件和 `dist/`。挂载后的二进制必须能在 Linux 容器内执行。如果宿主机二进制属于其他操作系统或 libc，请改为在镜像内安装/构建 OpenClaw，而不是 bind mount。
 
-如果要使用 MiniMax 国内 API-key/Coding Plan，在 `.env` 中设置密钥：
+如果要使用 MiniMax 国内 Coding Plan，在 `.env` 中设置密钥：
 
 ```env
-MINIMAX_API_KEY=sk-...
 MINIMAX_CODE_PLAN_KEY=sk-...
 ```
 
-只要存在任一变量，ClawScale 会为每个隔离的本地 OpenClaw profile 写入 MiniMax 国内配置：默认模型为 `minimax/MiniMax-M2.7`，provider URL 为 `https://api.minimaxi.com/anthropic`，API 模式为 `anthropic-messages`。生成的 profile 只引用环境变量，不会把密钥明文写入 `openclaw.json`。
+只要存在 `MINIMAX_CODE_PLAN_KEY`，ClawScale 会为每个隔离的本地 OpenClaw profile 写入 MiniMax 国内配置：默认模型为 `minimax/MiniMax-M2.7`，provider URL 为 `https://api.minimaxi.com/anthropic`，API 模式为 `anthropic-messages`。生成的 profile 只引用 `${MINIMAX_CODE_PLAN_KEY}`，不会把密钥明文写入 `openclaw.json`。
 
 ## 许可证
 

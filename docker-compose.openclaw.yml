@@ -3,8 +3,7 @@ services:
     environment:
       OPENCLAW_BIN: ${OPENCLAW_BIN_CONTAINER:-/opt/openclaw/openclaw}
       OPENCLAW_DATA_DIR: ${OPENCLAW_DATA_DIR_CONTAINER:-/app/data/openclaw}
-      MINIMAX_API_KEY: ${MINIMAX_API_KEY:-}
-      MINIMAX_CODE_PLAN_KEY: ${MINIMAX_CODE_PLAN_KEY:-${MINIMAX_API_KEY:-}}
+      MINIMAX_CODE_PLAN_KEY: ${MINIMAX_CODE_PLAN_KEY:-}
     volumes:
       - type: bind
         source: ${OPENCLAW_HOST_DIR:?Set OPENCLAW_HOST_DIR to the OpenClaw install directory containing openclaw and dist/}

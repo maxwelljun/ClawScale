@@ -167,7 +167,6 @@ function withMiniMaxConfig(config: Record<string, unknown>): Record<string, unkn
     ...config,
     env: {
       ...env,
-      MINIMAX_API_KEY: env.MINIMAX_API_KEY ?? '${MINIMAX_API_KEY}',
       MINIMAX_CODE_PLAN_KEY: env.MINIMAX_CODE_PLAN_KEY ?? '${MINIMAX_CODE_PLAN_KEY}',
     },
     agents: {
@@ -186,7 +185,7 @@ function withMiniMaxConfig(config: Record<string, unknown>): Record<string, unkn
         ...providers,
         minimax: {
           baseUrl: existingMiniMax.baseUrl ?? 'https://api.minimaxi.com/anthropic',
-          apiKey: existingMiniMax.apiKey ?? '${MINIMAX_API_KEY}',
+          apiKey: existingMiniMax.apiKey ?? '${MINIMAX_CODE_PLAN_KEY}',
           api: existingMiniMax.api ?? 'anthropic-messages',
           models: Array.isArray(existingMiniMax.models)
             ? existingMiniMax.models
@@ -215,7 +214,7 @@ function withMiniMaxConfig(config: Record<string, unknown>): Record<string, unkn
 }
 
 function hasMiniMaxEnv(): boolean {
-  return Boolean(process.env.MINIMAX_API_KEY || process.env.MINIMAX_CODE_PLAN_KEY);
+  return Boolean(process.env.MINIMAX_CODE_PLAN_KEY);
 }
 
 function buildArgs(paths: ReturnType<typeof resolveRuntimePaths>): string[] {

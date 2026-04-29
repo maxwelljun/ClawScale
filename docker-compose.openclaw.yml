@@ -1,12 +1,12 @@
 services:
   app:
     environment:
-      OPENCLAW_BIN: ${OPENCLAW_BIN_CONTAINER:-/usr/local/bin/openclaw}
+      OPENCLAW_BIN: ${OPENCLAW_BIN_CONTAINER:-/opt/openclaw/openclaw}
       OPENCLAW_DATA_DIR: ${OPENCLAW_DATA_DIR_CONTAINER:-/app/data/openclaw}
     volumes:
       - type: bind
-        source: ${OPENCLAW_BIN_HOST:-/usr/bin/openclaw}
-        target: ${OPENCLAW_BIN_CONTAINER:-/usr/local/bin/openclaw}
+        source: ${OPENCLAW_HOST_DIR:?Set OPENCLAW_HOST_DIR to the OpenClaw install directory containing openclaw and dist/}
+        target: ${OPENCLAW_CONTAINER_DIR:-/opt/openclaw}
         read_only: true
         bind:
           create_host_path: false

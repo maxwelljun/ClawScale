@@ -300,14 +300,14 @@ OPENCLAW_DATA_DIR/{tenantId}/{channelId}/{endUserId}/{backendId}/
 
 ClawScale sends only the current user message to local OpenClaw. Conversation memory, sessions, tools, and files are managed by the isolated OpenClaw `state/` and `workspace/` directories instead of by ClawScale database history. By default the process is launched as `openclaw --profile {profile} gateway --port {port}`. Override the arguments with `OPENCLAW_ARGS`; supported placeholders are `{profile}`, `{port}`, `{stateDir}`, and `{workspaceDir}`.
 
-If ClawScale runs in Docker and `openclaw` is installed on the host, mount it into the app container with the overlay compose file:
+If ClawScale runs in Docker and `openclaw` is installed on the host, mount the full OpenClaw install directory into the app container with the overlay compose file. Do not mount only `/usr/bin/openclaw`: the entry script also needs its `dist/` build output.
 
 ```bash
-OPENCLAW_BIN_HOST=/usr/bin/openclaw \
+OPENCLAW_HOST_DIR=/path/to/openclaw \
 docker compose -f docker-compose.yml -f docker-compose.openclaw.yml up -d --build
 ```
 
-The host binary must be executable inside the Linux container. If your host binary is for another OS or libc, install/build OpenClaw inside the image instead of bind-mounting it.
+`OPENCLAW_HOST_DIR` must contain both the `openclaw` entry file and `dist/`. The mounted binary must be executable inside the Linux container. If your host binary is for another OS or libc, install/build OpenClaw inside the image instead of bind-mounting it.
 
 ## License
 

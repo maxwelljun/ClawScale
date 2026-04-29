@@ -309,6 +309,15 @@ docker compose -f docker-compose.yml -f docker-compose.openclaw.yml up -d --buil
 
 `OPENCLAW_HOST_DIR` must contain both the `openclaw` entry file and `dist/`. The mounted binary must be executable inside the Linux container. If your host binary is for another OS or libc, install/build OpenClaw inside the image instead of bind-mounting it.
 
+For MiniMax China API-key/Coding Plan, set the key in `.env`:
+
+```env
+MINIMAX_API_KEY=sk-...
+MINIMAX_CODE_PLAN_KEY=sk-...
+```
+
+When either variable is present, ClawScale seeds each isolated local OpenClaw profile with MiniMax China settings: `minimax/MiniMax-M2.7` as the default model, `https://api.minimaxi.com/anthropic` as the provider URL, and `anthropic-messages` as the API mode. The generated profile references environment variables and does not write the key value into `openclaw.json`.
+
 ## License
 
 MIT

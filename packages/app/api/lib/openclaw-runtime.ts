@@ -118,7 +118,7 @@ async function prepareRuntimeConfig(paths: ReturnType<typeof resolveRuntimePaths
 
   const configPath = path.join(paths.profileStateDir, 'openclaw.json');
   const existing = await readJsonObject(configPath);
-  const config = {
+  const config = withMiniMaxConfig({
     ...existing,
     gateway: {
       ...objectValue(existing.gateway),
@@ -149,8 +149,73 @@ async function prepareRuntimeConfig(paths: ReturnType<typeof resolveRuntimePaths
         workspace: paths.workspaceDir,
       },
     },
-  };
+  });
   await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
+}
+
+function withMiniMaxConfig(config: Record<string, unknown>): Record<string, unknown> {
+  if (!hasMiniMaxEnv()) return config;
+
+  const env = objectValue(config.env);
+  const agents = objectValue(config.agents);
+  const defaults = objectValue(agents.defaults);
+  const models = objectValue(config.models);
+  const providers = objectValue(models.providers);
+  const existingMiniMax = objectValue(providers.minimax);
+
+  return {
+    ...config,
+    env: {
+      ...env,
+      MINIMAX_API_KEY: env.MINIMAX_API_KEY ?? '${MINIMAX_API_KEY}',
+      MINIMAX_CODE_PLAN_KEY: env.MINIMAX_CODE_PLAN_KEY ?? '${MINIMAX_CODE_PLAN_KEY}',
+    },
+    agents: {
+      ...agents,
+      defaults: {
+        ...defaults,
+        model: objectValue(defaults.model).primary
+          ? defaults.model
+          : { ...objectValue(defaults.model), primary: 'minimax/MiniMax-M2.7' },
+      },
+    },
+    models: {
+      ...models,
+      mode: models.mode ?? 'merge',
+      providers: {
+        ...providers,
+        minimax: {
+          baseUrl: existingMiniMax.baseUrl ?? 'https://api.minimaxi.com/anthropic',
+          apiKey: existingMiniMax.apiKey ?? '${MINIMAX_API_KEY}',
+          api: existingMiniMax.api ?? 'anthropic-messages',
+          models: Array.isArray(existingMiniMax.models)
+            ? existingMiniMax.models
+            : [
+                {
+                  id: 'MiniMax-M2.7',
+                  name: 'MiniMax M2.7',
+                  reasoning: true,
+                  input: ['text', 'image'],
+                  contextWindow: 204800,
+                  maxTokens: 131072,
+                },
+                {
+                  id: 'MiniMax-M2.7-highspeed',
+                  name: 'MiniMax M2.7 Highspeed',
+                  reasoning: true,
+                  input: ['text', 'image'],
+                  contextWindow: 204800,
+                  maxTokens: 131072,
+                },
+              ],
+        },
+      },
+    },
+  };
+}
+
+function hasMiniMaxEnv(): boolean {
+  return Boolean(process.env.MINIMAX_API_KEY || process.env.MINIMAX_CODE_PLAN_KEY);
 }
 
 function buildArgs(paths: ReturnType<typeof resolveRuntimePaths>): string[] {

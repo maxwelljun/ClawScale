@@ -291,7 +291,8 @@ packages/
 | `OPENCLAW_MODEL_PROVIDER_API_KEY` | Optional default OpenClaw model provider API key |
 | `OPENCLAW_MODEL_PROVIDER_API` | OpenClaw provider API type (default: `openai-completions`) |
 | `OPENCLAW_DEFAULT_MODEL` | Optional default OpenClaw model id |
-| `OPENCLAW_PREWARM_CHAT` | Set to `false` to skip the prewarm chat completion and only prewarm `/v1/models` |
+| `OPENCLAW_READY_TIMEOUT_MS` | How long to wait for an isolated OpenClaw gateway to become ready (default: `180000`) |
+| `OPENCLAW_PREWARM_CHAT` | Set to `true` to prewarm with a chat completion. By default ClawScale only prewarms `/v1/models` to avoid competing with real user messages |
 
 ## License
 

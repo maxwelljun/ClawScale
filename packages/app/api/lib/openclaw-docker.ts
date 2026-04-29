@@ -41,7 +41,8 @@ const OPENCLAW_MODEL_PROVIDER_BASE_URL = process.env.OPENCLAW_MODEL_PROVIDER_BAS
 const OPENCLAW_MODEL_PROVIDER_API_KEY = process.env.OPENCLAW_MODEL_PROVIDER_API_KEY ?? '';
 const OPENCLAW_MODEL_PROVIDER_API = process.env.OPENCLAW_MODEL_PROVIDER_API ?? 'openai-completions';
 const OPENCLAW_DEFAULT_MODEL = process.env.OPENCLAW_DEFAULT_MODEL ?? '';
-const OPENCLAW_PREWARM_CHAT = process.env.OPENCLAW_PREWARM_CHAT !== 'false';
+const OPENCLAW_READY_TIMEOUT_MS = Number(process.env.OPENCLAW_READY_TIMEOUT_MS ?? 180_000);
+const OPENCLAW_PREWARM_CHAT = process.env.OPENCLAW_PREWARM_CHAT === 'true';
 
 const ensureTasks = new Map<string, Promise<OpenClawDockerRuntime>>();
 const prewarmTasks = new Map<string, Promise<void>>();
@@ -263,7 +264,7 @@ async function ensureNetwork(containerName: string, inspect: DockerInspect): Pro
 }
 
 async function waitForHealth(baseUrl: string): Promise<void> {
-  const deadline = Date.now() + 60_000;
+  const deadline = Date.now() + OPENCLAW_READY_TIMEOUT_MS;
   while (Date.now() < deadline) {
     for (const path of ['/healthz', '/']) {
       try {

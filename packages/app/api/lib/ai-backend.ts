@@ -63,6 +63,7 @@ export interface GenerateOptions {
 // ── Lazy singletons per config hash ──────────────────────────────────────────
 
 const openaiClients = new Map<string, OpenAI>();
+const openClawRuntimeQueues = new Map<string, Promise<void>>();
 
 function getOpenAIClient(apiKey: string, baseURL?: string): OpenAI {
   const key = `${apiKey}::${baseURL ?? ''}`;
@@ -70,6 +71,27 @@ function getOpenAIClient(apiKey: string, baseURL?: string): OpenAI {
     openaiClients.set(key, new OpenAI({ apiKey, ...(baseURL ? { baseURL } : {}) }));
   }
   return openaiClients.get(key)!;
+}
+
+async function runOpenClawQueued<T>(sessionKey: string | undefined, task: () => Promise<T>): Promise<T> {
+  if (!sessionKey) return task();
+
+  const previous = openClawRuntimeQueues.get(sessionKey) ?? Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  openClawRuntimeQueues.set(sessionKey, previous.then(() => current, () => current));
+
+  await previous.catch(() => undefined);
+  try {
+    return await task();
+  } finally {
+    release();
+    if (openClawRuntimeQueues.get(sessionKey) === current) {
+      openClawRuntimeQueues.delete(sessionKey);
+    }
+  }
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -317,7 +339,8 @@ async function handleOpenAiSdk(
     const model = cfg.model || 'openclaw/default';
     const client = getOpenAIClient(apiKey, `${url.replace(/\/$/, '')}/v1`);
     const sessionKey = options.openclaw ? openClawSessionKey(options.openclaw) : undefined;
-    const response = await client.chat.completions.create({
+    const startedAt = Date.now();
+    const response = await runOpenClawQueued(sessionKey, () => client.chat.completions.create({
       model,
       messages: history.map(toOpenAiMessage),
       max_completion_tokens: 1024,
@@ -327,7 +350,10 @@ async function handleOpenAiSdk(
         ...(sessionKey ? { 'x-openclaw-session-key': sessionKey } : {}),
         ...(options.platform ? { 'x-openclaw-message-channel': options.platform } : {}),
       },
-    });
+    }));
+    if (sessionKey) {
+      console.log(`[openclaw] Chat completed for ${sessionKey} in ${Date.now() - startedAt}ms`);
+    }
     return response.choices[0]?.message?.content?.trim() ?? '';
   }
 

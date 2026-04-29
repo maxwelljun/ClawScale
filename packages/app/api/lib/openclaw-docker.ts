@@ -31,6 +31,8 @@ const OPENCLAW_IMAGE = process.env.OPENCLAW_IMAGE ?? '1panel/openclaw:latest';
 const OPENCLAW_DATA_DIR = process.env.OPENCLAW_DATA_DIR ?? path.resolve(process.cwd(), 'data', 'tenants');
 const OPENCLAW_GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN ?? '';
 const DOCKER_TIMEOUT_MS = Number(process.env.OPENCLAW_DOCKER_TIMEOUT_MS ?? 300_000);
+const OPENCLAW_CONTAINER_UID = Number(process.env.OPENCLAW_CONTAINER_UID ?? 1000);
+const OPENCLAW_CONTAINER_GID = Number(process.env.OPENCLAW_CONTAINER_GID ?? 1000);
 
 function shortHash(input: string): string {
   return createHash('sha256').update(input).digest('hex').slice(0, 12);
@@ -74,6 +76,19 @@ async function docker(args: string[]): Promise<string> {
     timeout: DOCKER_TIMEOUT_MS,
   });
   return stdout.trim();
+}
+
+async function chownRecursive(target: string, uid: number, gid: number): Promise<void> {
+  await fs.chown(target, uid, gid);
+  const entries = await fs.readdir(target, { withFileTypes: true });
+  await Promise.all(entries.map(async (entry) => {
+    const entryPath = path.join(target, entry.name);
+    if (entry.isDirectory()) {
+      await chownRecursive(entryPath, uid, gid);
+      return;
+    }
+    await fs.chown(entryPath, uid, gid);
+  }));
 }
 
 async function inspectContainer(name: string): Promise<DockerInspect | null> {
@@ -139,7 +154,7 @@ async function createContainer(identity: OpenClawRuntimeIdentity, name: string, 
     ...envArgs,
     OPENCLAW_IMAGE,
     'node',
-    'dist/index.js',
+    'openclaw.mjs',
     'gateway',
     '--allow-unconfigured',
     '--bind',
@@ -154,6 +169,8 @@ export async function ensureOpenClawDockerRuntime(identity: OpenClawRuntimeIdent
   const { stateDir, workspaceDir } = openClawRuntimeDirs(identity);
   await fs.mkdir(stateDir, { recursive: true });
   await fs.mkdir(workspaceDir, { recursive: true });
+  await chownRecursive(stateDir, OPENCLAW_CONTAINER_UID, OPENCLAW_CONTAINER_GID);
+  await chownRecursive(workspaceDir, OPENCLAW_CONTAINER_UID, OPENCLAW_CONTAINER_GID);
 
   let inspect = await inspectContainer(containerName);
   if (!inspect) {

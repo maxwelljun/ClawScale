@@ -272,7 +272,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     }).join('\n');
   }
 
-  async function routeToBackends(backends: typeof allBackends): Promise<RouteResult> {
+  async function routeToBackends(backends: typeof allBackends, currentText = text): Promise<RouteResult> {
     const hasPalmos = backends.some((b) => b.type === 'palmos');
     const palmosCtx = hasPalmos
       ? {
@@ -287,6 +287,10 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
         const replyText = await runBackend(backend, historyConvIds, palmosCtx, {
           sender: endUser!.name ?? displayName,
           platform,
+          tenantId,
+          channelId,
+          endUserId: endUser!.id,
+          currentMessage: { content: currentText, attachments },
         });
         return { backend, replyText };
       }),
@@ -597,7 +601,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
       if (!backend) {
         return reply(`Backend "${cmd.target}" is not available.`);
       }
-      return routeToBackends([backend]);
+      return routeToBackends([backend], cmd.message);
     }
   }
 
@@ -688,9 +692,22 @@ async function runBackend(
   backend: { id: string; type: string; config: unknown },
   conversationIds: string | string[],
   palmosCtx?: { endUserId: string; tenantId: string; conversationId: string; displayName?: string },
-  meta?: { sender?: string; platform?: string },
+  meta?: {
+    sender?: string;
+    platform?: string;
+    tenantId?: string;
+    channelId?: string;
+    endUserId?: string;
+    currentMessage?: { content: string; attachments?: Attachment[] };
+  },
 ): Promise<string> {
-  const history = await loadHistory(conversationIds, backend.id);
+  const history = backend.type === 'openclaw' && meta?.currentMessage
+    ? [{
+        role: 'user' as const,
+        content: meta.currentMessage.content,
+        ...(meta.currentMessage.attachments?.length ? { attachments: meta.currentMessage.attachments } : {}),
+      }]
+    : await loadHistory(conversationIds, backend.id);
   const cfg = (backend.config ?? {}) as AiBackendProviderConfig;
   // Pass backend ID through for cli-bridge WebSocket lookup
   (cfg as any).__backendId = backend.id;
@@ -701,6 +718,16 @@ async function runBackend(
       ...(backend.type === 'palmos' && palmosCtx ? { palmosCtx } : {}),
     },
     history,
+    ...(backend.type === 'openclaw' && meta?.tenantId && meta.channelId && meta.endUserId
+      ? {
+          openclaw: {
+            tenantId: meta.tenantId,
+            channelId: meta.channelId,
+            endUserId: meta.endUserId,
+            backendId: backend.id,
+          },
+        }
+      : {}),
     sender: meta?.sender,
     platform: meta?.platform,
     onConfigUpdate: (patch) => {

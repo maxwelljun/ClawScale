@@ -18,6 +18,7 @@ import type {
   ResponseFormat,
 } from '../../shared/index.js';
 import { BACKEND_TYPE_DESCRIPTORS } from '../../shared/index.js';
+import { ensureOpenClawDockerRuntime, type OpenClawRuntimeIdentity } from './openclaw-docker.js';
 
 export interface PalmosContext {
   endUserId: string;
@@ -49,6 +50,8 @@ export type HistoryMessage = {
 export interface GenerateOptions {
   backend: BackendSpec;
   history: HistoryMessage[];
+  /** OpenClaw Docker runtime isolation identity */
+  openclaw?: OpenClawRuntimeIdentity;
   /** Display name of the end-user sending the message */
   sender?: string;
   /** Chat platform the message came from (e.g. "telegram", "discord") */
@@ -642,6 +645,11 @@ export async function generateReply(options: GenerateOptions): Promise<string> {
         }
         // llm and openclaw use the OpenAI SDK client
         if (type === 'llm' || type === 'openclaw') {
+          if (type === 'openclaw' && options.openclaw && process.env.OPENCLAW_DOCKER_ISOLATION !== 'false') {
+            const runtime = await ensureOpenClawDockerRuntime(options.openclaw);
+            cfg.baseUrl = runtime.baseUrl;
+            cfg.apiKey = cfg.apiKey ?? process.env.OPENCLAW_GATEWAY_TOKEN;
+          }
           return await handleOpenAiSdk(type, cfg, history);
         }
         return await handleFetch(descriptor, cfg, history, extraBody);

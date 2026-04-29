@@ -1,9 +1,26 @@
 import { describe, it, expect } from 'vitest';
 import { isBridgeConnected, generateReply } from '../lib/ai-backend.js';
+import { openClawContainerName, openClawRuntimeDirs } from '../lib/openclaw-docker.js';
 
 describe('ai-backend utilities', () => {
   it('isBridgeConnected returns false for unknown backend', () => {
     expect(isBridgeConnected('nonexistent')).toBe(false);
+  });
+
+  it('derives stable isolated OpenClaw Docker runtime names and dirs', () => {
+    const identity = {
+      tenantId: 'tenant/a',
+      channelId: 'channel:b',
+      endUserId: 'user c',
+      backendId: 'backend:d',
+    };
+
+    expect(openClawContainerName(identity)).toMatch(/^clawscale-openclaw-[a-f0-9]{12}$/);
+    expect(openClawContainerName(identity)).toBe(openClawContainerName(identity));
+
+    const dirs = openClawRuntimeDirs(identity);
+    expect(dirs.stateDir).toContain('/tenants/tenant_a/channels/channel_b/users/user_c/backends/backend_d/state');
+    expect(dirs.workspaceDir).toContain('/tenants/tenant_a/channels/channel_b/users/user_c/backends/backend_d/workspace');
   });
 });
 

@@ -155,6 +155,12 @@ function defaultRuntimeConfig(identity: OpenClawRuntimeIdentity): JsonObject {
         },
       },
     },
+    agents: {
+      defaults: {
+        skipBootstrap: true,
+        contextInjection: 'never',
+      },
+    },
   };
 
   if (!OPENCLAW_MODEL_PROVIDER_ID || !OPENCLAW_MODEL_PROVIDER_BASE_URL || !OPENCLAW_DEFAULT_MODEL) {
@@ -183,6 +189,8 @@ function defaultRuntimeConfig(identity: OpenClawRuntimeIdentity): JsonObject {
     },
     agents: {
       defaults: {
+        skipBootstrap: true,
+        contextInjection: 'never',
         model: { primary: `${OPENCLAW_MODEL_PROVIDER_ID}/${OPENCLAW_DEFAULT_MODEL}` },
       },
     },

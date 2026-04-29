@@ -74,17 +74,25 @@ export async function startTelegramBot(channelId: string, token: string): Promis
 
     console.log(`[telegram:${channelId}] Incoming from ${externalId}: "${text}"${attachments.length ? ` (+${attachments.length} attachment(s))` : ''}`);
 
-    try {
-      const result = await routeInboundMessage({
-        channelId, externalId, displayName,
-        text: text || '(attachment)',
-        attachments: attachments.length > 0 ? attachments : undefined,
-        meta: { platform: 'telegram', chatId: ctx.chat.id },
-      });
-      if (result?.reply) await ctx.reply(result.reply);
-    } catch (err) {
-      console.error(`[telegram:${channelId}] Error routing message:`, err);
-    }
+    const chatId = ctx.chat.id;
+    const messageText = text || '(attachment)';
+    const messageAttachments = attachments.length > 0 ? attachments : undefined;
+
+    void (async () => {
+      const startedAt = Date.now();
+      try {
+        const result = await routeInboundMessage({
+          channelId, externalId, displayName,
+          text: messageText,
+          attachments: messageAttachments,
+          meta: { platform: 'telegram', chatId },
+        });
+        if (result?.reply) await ctx.api.sendMessage(chatId, result.reply);
+        console.log(`[telegram:${channelId}] Replied to ${externalId} in ${Date.now() - startedAt}ms`);
+      } catch (err) {
+        console.error(`[telegram:${channelId}] Error routing message:`, err);
+      }
+    })();
   });
 
   bot.catch((err) => console.error(`[telegram:${channelId}] Bot error:`, err));

@@ -79,15 +79,32 @@ async function docker(args: string[]): Promise<string> {
 }
 
 async function chownRecursive(target: string, uid: number, gid: number): Promise<void> {
-  await fs.chown(target, uid, gid);
-  const entries = await fs.readdir(target, { withFileTypes: true });
+  try {
+    await fs.chown(target, uid, gid);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+    throw error;
+  }
+
+  let entries;
+  try {
+    entries = await fs.readdir(target, { withFileTypes: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+    throw error;
+  }
+
   await Promise.all(entries.map(async (entry) => {
     const entryPath = path.join(target, entry.name);
     if (entry.isDirectory()) {
       await chownRecursive(entryPath, uid, gid);
       return;
     }
-    await fs.chown(entryPath, uid, gid);
+    try {
+      await fs.chown(entryPath, uid, gid);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
   }));
 }
 
@@ -169,14 +186,16 @@ export async function ensureOpenClawDockerRuntime(identity: OpenClawRuntimeIdent
   const { stateDir, workspaceDir } = openClawRuntimeDirs(identity);
   await fs.mkdir(stateDir, { recursive: true });
   await fs.mkdir(workspaceDir, { recursive: true });
-  await chownRecursive(stateDir, OPENCLAW_CONTAINER_UID, OPENCLAW_CONTAINER_GID);
-  await chownRecursive(workspaceDir, OPENCLAW_CONTAINER_UID, OPENCLAW_CONTAINER_GID);
 
   let inspect = await inspectContainer(containerName);
   if (!inspect) {
+    await chownRecursive(stateDir, OPENCLAW_CONTAINER_UID, OPENCLAW_CONTAINER_GID);
+    await chownRecursive(workspaceDir, OPENCLAW_CONTAINER_UID, OPENCLAW_CONTAINER_GID);
     await createContainer(identity, containerName, stateDir, workspaceDir);
     inspect = await inspectContainer(containerName);
   } else if (!inspect.State?.Running) {
+    await chownRecursive(stateDir, OPENCLAW_CONTAINER_UID, OPENCLAW_CONTAINER_GID);
+    await chownRecursive(workspaceDir, OPENCLAW_CONTAINER_UID, OPENCLAW_CONTAINER_GID);
     await docker(['start', containerName]);
     inspect = await inspectContainer(containerName);
   }

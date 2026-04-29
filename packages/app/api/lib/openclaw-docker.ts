@@ -177,7 +177,6 @@ function defaultRuntimeConfig(identity: OpenClawRuntimeIdentity): JsonObject {
     agents: {
       defaults: {
         skipBootstrap: true,
-        contextInjection: 'never',
       },
     },
   };
@@ -209,7 +208,6 @@ function defaultRuntimeConfig(identity: OpenClawRuntimeIdentity): JsonObject {
     agents: {
       defaults: {
         skipBootstrap: true,
-        contextInjection: 'never',
         model: { primary: `${OPENCLAW_MODEL_PROVIDER_ID}/${OPENCLAW_DEFAULT_MODEL}` },
       },
     },

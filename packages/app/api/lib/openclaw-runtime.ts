@@ -162,12 +162,13 @@ function withMiniMaxConfig(config: Record<string, unknown>): Record<string, unkn
   const models = objectValue(config.models);
   const providers = objectValue(models.providers);
   const existingMiniMax = objectValue(providers.minimax);
+  const { MINIMAX_API_KEY: _oldMiniMaxApiKey, ...envWithoutOldMiniMaxKey } = env;
 
   return {
     ...config,
     env: {
-      ...env,
-      MINIMAX_CODE_PLAN_KEY: env.MINIMAX_CODE_PLAN_KEY ?? '${MINIMAX_CODE_PLAN_KEY}',
+      ...envWithoutOldMiniMaxKey,
+      MINIMAX_CODE_PLAN_KEY: '${MINIMAX_CODE_PLAN_KEY}',
     },
     agents: {
       ...agents,
@@ -185,7 +186,7 @@ function withMiniMaxConfig(config: Record<string, unknown>): Record<string, unkn
         ...providers,
         minimax: {
           baseUrl: existingMiniMax.baseUrl ?? 'https://api.minimaxi.com/anthropic',
-          apiKey: existingMiniMax.apiKey ?? '${MINIMAX_CODE_PLAN_KEY}',
+          apiKey: '${MINIMAX_CODE_PLAN_KEY}',
           api: existingMiniMax.api ?? 'anthropic-messages',
           models: Array.isArray(existingMiniMax.models)
             ? existingMiniMax.models

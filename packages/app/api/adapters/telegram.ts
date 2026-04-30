@@ -9,6 +9,56 @@ import { routeInboundMessage } from '../lib/route-message.js';
 import type { Attachment } from '../lib/route-message.js';
 
 const bots = new Map<string, Bot>();
+type TelegramAbortSignal = Parameters<Bot['api']['sendMessage']>[3];
+const TELEGRAM_TEXT_LIMIT = 4096;
+const TELEGRAM_DRAFT_THROTTLE_MS = 1000;
+const TELEGRAM_DRAFT_TIMEOUT_MS = Number(process.env.TELEGRAM_DRAFT_TIMEOUT_MS ?? 2500);
+const TELEGRAM_SEND_TIMEOUT_MS = Number(process.env.TELEGRAM_SEND_TIMEOUT_MS ?? 20000);
+const TELEGRAM_DRAFT_ID_MAX = 2_147_483_647;
+
+let nextDraftId = 0;
+
+function allocateDraftId(): number {
+  nextDraftId = nextDraftId >= TELEGRAM_DRAFT_ID_MAX ? 1 : nextDraftId + 1;
+  return nextDraftId;
+}
+
+function withAbortSignal<T>(timeoutMs: number, run: (signal: TelegramAbortSignal) => Promise<T>): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return run(controller.signal as TelegramAbortSignal).finally(() => clearTimeout(timer));
+}
+
+function telegramTextChunks(value: string): string[] {
+  const text = value.trim();
+  if (!text) return [];
+  const chunks: string[] = [];
+  for (let i = 0; i < text.length; i += TELEGRAM_TEXT_LIMIT) {
+    chunks.push(text.slice(i, i + TELEGRAM_TEXT_LIMIT));
+  }
+  return chunks;
+}
+
+async function sendTelegramMessage(
+  ctx: Context,
+  chatId: number,
+  text: string,
+  channelId: string,
+): Promise<void> {
+  for (const chunk of telegramTextChunks(text)) {
+    try {
+      await withAbortSignal(TELEGRAM_SEND_TIMEOUT_MS, (signal) =>
+        ctx.api.sendMessage(chatId, chunk, undefined, signal),
+      );
+    } catch (err) {
+      console.warn(`[telegram:${channelId}] sendMessage failed, retrying once:`, err);
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await withAbortSignal(TELEGRAM_SEND_TIMEOUT_MS, (signal) =>
+        ctx.api.sendMessage(chatId, chunk, undefined, signal),
+      );
+    }
+  }
+}
 
 export async function startTelegramBot(channelId: string, token: string): Promise<void> {
   if (bots.has(channelId)) return;
@@ -80,30 +130,36 @@ export async function startTelegramBot(channelId: string, token: string): Promis
 
     void (async () => {
       const startedAt = Date.now();
-      const draftId = Math.max(1, Date.now() % 2_147_483_647);
+      const draftId = allocateDraftId();
       let draftSent = false;
+      let draftDisabled = ctx.chat.type !== 'private';
       let lastStreamText = '';
       let lastDraftAt = 0;
       let draftChain = Promise.resolve();
 
       const telegramText = (value: string) => {
         const text = value.trim();
-        return text.length > 4096 ? text.slice(0, 4093) + '...' : text;
+        return text.length > TELEGRAM_TEXT_LIMIT ? text.slice(0, TELEGRAM_TEXT_LIMIT - 3) + '...' : text;
       };
 
       const queueDraft = (nextText: string, force = false) => {
+        if (draftDisabled) return;
         const trimmed = telegramText(nextText);
         if (!trimmed || trimmed === lastStreamText) return;
         const now = Date.now();
-        if (!force && now - lastDraftAt < 1000) return;
+        if (!force && now - lastDraftAt < TELEGRAM_DRAFT_THROTTLE_MS) return;
 
         lastStreamText = trimmed;
         lastDraftAt = now;
         draftSent = true;
         draftChain = draftChain.then(async () => {
+          if (draftDisabled) return;
           try {
-            await ctx.api.sendMessageDraft(chatId, draftId, trimmed);
+            await withAbortSignal(TELEGRAM_DRAFT_TIMEOUT_MS, (signal) =>
+              ctx.api.sendMessageDraft(chatId, draftId, trimmed, undefined, signal),
+            );
           } catch (err) {
+            draftDisabled = true;
             console.warn(`[telegram:${channelId}] Failed to send streamed draft:`, err);
           }
         });
@@ -117,13 +173,15 @@ export async function startTelegramBot(channelId: string, token: string): Promis
           meta: { platform: 'telegram', chatId },
           onStream: ({ text, done }) => queueDraft(text, done),
         });
-        await draftChain;
         if (result?.reply) {
           if (draftSent && result.reply.trim() !== lastStreamText) {
             queueDraft(result.reply, true);
-            await draftChain;
           }
-          await ctx.api.sendMessage(chatId, result.reply);
+          await Promise.race([
+            draftChain,
+            new Promise((resolve) => setTimeout(resolve, TELEGRAM_DRAFT_TIMEOUT_MS)),
+          ]).catch(() => {});
+          await sendTelegramMessage(ctx, chatId, result.reply, channelId);
         }
         console.log(`[telegram:${channelId}] Replied to ${externalId} in ${Date.now() - startedAt}ms`);
       } catch (err) {

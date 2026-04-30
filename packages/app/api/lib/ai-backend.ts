@@ -778,7 +778,7 @@ export async function generateReply(options: GenerateOptions): Promise<string> {
           if (type === 'openclaw' && options.openclaw && process.env.OPENCLAW_DOCKER_ISOLATION !== 'false') {
             const runtime = await ensureOpenClawDockerRuntime(options.openclaw);
             cfg.baseUrl = runtime.baseUrl;
-            cfg.apiKey = cfg.apiKey ?? runtime.gatewayToken;
+            cfg.apiKey = runtime.gatewayToken;
           }
           return await handleOpenAiSdk(type, cfg, history, options);
         }

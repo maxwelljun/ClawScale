@@ -12,6 +12,7 @@ import { channelsRouter } from "./routes/channels.js";
 import { tenantRouter } from "./routes/tenant.js";
 import { conversationsRouter } from "./routes/conversations.js";
 import { aiBackendsRouter } from "./routes/ai-backends.js";
+import { modelsRouter } from "./routes/models.js";
 import { endUsersRouter } from "./routes/end-users.js";
 import { onboardRouter } from "./routes/onboard.js";
 import { gatewayRouter } from "./gateway/message-router.js";
@@ -47,6 +48,8 @@ app.use("/api/channels", channelsRouter);
 app.use("/api/tenant", tenantRouter);
 app.use("/api/conversations", conversationsRouter);
 app.use("/api/ai-backends", aiBackendsRouter);
+app.use("/api/agents", aiBackendsRouter);
+app.use("/api/models", modelsRouter);
 app.use("/api/end-users", endUsersRouter);
 
 // ─── Public onboarding routes ────────────────────────────────────────────────

@@ -7,7 +7,8 @@ import DashboardLayout from './layouts/DashboardLayout';
 import Dashboard from './pages/Dashboard';
 import Conversations from './pages/Conversations';
 import Channels from './pages/Channels';
-import AiBackends from './pages/AiBackends';
+import Agents from './pages/Agents';
+import Models from './pages/Models';
 import Users from './pages/Users';
 import EndUsers from './pages/EndUsers';
 import Settings from './pages/Settings';
@@ -49,7 +50,9 @@ createRoot(document.getElementById('root')!).render(
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="conversations" element={<Conversations />} />
           <Route path="channels" element={<Channels />} />
-          <Route path="ai-backends" element={<AiBackends />} />
+          <Route path="agents" element={<Agents />} />
+          <Route path="ai-backends" element={<Navigate to="/agents" replace />} />
+          <Route path="models" element={<Models />} />
           <Route path="end-users" element={<EndUsers />} />
           <Route path="users" element={<Users />} />
           <Route path="onboarding" element={<Onboarding />} />

@@ -86,7 +86,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
   // 1. Resolve channel + tenant
   const channel = await db.channel.findUnique({
     where: { id: channelId },
-    select: { id: true, tenantId: true, status: true },
+    select: { id: true, tenantId: true, status: true, agentTemplateId: true },
   });
   if (!channel || channel.status !== 'connected') return null;
   const { tenantId } = channel;
@@ -171,9 +171,21 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     || (labelPolicy === 'show' && userHideLabels === true);
 
   const allBackends = await db.aiBackend.findMany({
-    where: { tenantId, isActive: true },
+    where: {
+      tenantId,
+      isActive: true,
+      ...(channel.agentTemplateId ? { id: channel.agentTemplateId } : {}),
+    },
     orderBy: { createdAt: 'asc' },
   });
+  if (channel.agentTemplateId && allBackends[0] && !activeBackendIds.includes(channel.agentTemplateId)) {
+    await db.endUserBackend.upsert({
+      where: { endUserId_backendId: { endUserId: endUser.id, backendId: channel.agentTemplateId } },
+      create: { endUserId: endUser.id, backendId: channel.agentTemplateId },
+      update: {},
+    });
+    activeBackendIds.push(channel.agentTemplateId);
+  }
   const openClawBackends = allBackends.filter((backend) => backend.type === 'openclaw');
   if (isNewUser && openClawBackends.length > 0 && process.env.OPENCLAW_DOCKER_ISOLATION !== 'false') {
     for (const backend of openClawBackends) {
@@ -717,7 +729,7 @@ async function getLinkedConversationIds(endUserId: string, linkedTo: string | nu
 }
 
 async function runBackend(
-  backend: { id: string; type: string; config: unknown },
+  backend: { id: string; type: string; config: unknown; modelProviderId?: string | null },
   conversationIds: string | string[],
   palmosCtx?: { endUserId: string; tenantId: string; conversationId: string; displayName?: string },
   meta?: {
@@ -737,7 +749,16 @@ async function runBackend(
         ...(meta.currentMessage.attachments?.length ? { attachments: meta.currentMessage.attachments } : {}),
       }]
     : await loadHistory(conversationIds, backend.id);
-  const cfg = (backend.config ?? {}) as AiBackendProviderConfig;
+  const cfg = { ...((backend.config ?? {}) as AiBackendProviderConfig) };
+  if (backend.modelProviderId) {
+    const provider = await db.modelProvider.findUnique({ where: { id: backend.modelProviderId } });
+    if (provider) {
+      const models = Array.isArray(provider.models) ? provider.models.filter((m): m is string => typeof m === 'string') : [];
+      cfg.baseUrl ??= provider.baseUrl ?? undefined;
+      cfg.apiKey ??= provider.apiKey ?? undefined;
+      cfg.model ??= models[0];
+    }
+  }
   // Pass backend ID through for cli-bridge WebSocket lookup
   (cfg as any).__backendId = backend.id;
   return generateReply({

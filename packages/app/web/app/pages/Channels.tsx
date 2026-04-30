@@ -17,16 +17,19 @@ const STATUS_BADGE: Record<string, string> = {
 };
 
 type ChannelRow = Omit<Channel, 'config'>;
+type AgentOption = { id: string; name: string; runtimeType?: string; isActive: boolean };
 
 export default function Channels() {
   const me = getUser();
   const isAdmin = me?.role === 'admin';
   const [channels, setChannels] = useState<ChannelRow[]>([]);
+  const [agents, setAgents] = useState<AgentOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [addType, setAddType] = useState<ChannelType>('whatsapp');
   const [addName, setAddName] = useState('');
   const [addConfig, setAddConfig] = useState<Record<string, string>>({});
+  const [addAgentTemplateId, setAddAgentTemplateId] = useState('');
   const [addError, setAddError] = useState('');
   const [adding, setAdding] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -38,8 +41,12 @@ export default function Channels() {
   const qrPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   async function load() {
-    const res = await api.get<ApiResponse<ChannelRow[]>>('/api/channels');
+    const [res, agentRes] = await Promise.all([
+      api.get<ApiResponse<ChannelRow[]>>('/api/channels'),
+      api.get<ApiResponse<AgentOption[]>>('/api/agents'),
+    ]);
     if (res.ok) setChannels(res.data);
+    if (agentRes.ok) setAgents(agentRes.data);
     setLoading(false);
   }
 
@@ -76,12 +83,12 @@ export default function Channels() {
     setQrStatus(null);
   }
 
-  function resetAddForm() { setAddName(''); setAddConfig({}); setAddError(''); setAddType('whatsapp'); }
+  function resetAddForm() { setAddName(''); setAddConfig({}); setAddError(''); setAddType('whatsapp'); setAddAgentTemplateId(''); }
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault(); setAddError(''); setAdding(true);
     try {
-      const res = await api.post<ApiResponse<ChannelRow>>('/api/channels', { type: addType, name: addName, config: addConfig });
+      const res = await api.post<ApiResponse<ChannelRow>>('/api/channels', { type: addType, name: addName, agentTemplateId: addAgentTemplateId || null, config: addConfig });
       if (!res.ok) { setAddError(res.error); return; }
       setChannels((prev) => [...prev, res.data]);
       setShowAdd(false); resetAddForm();
@@ -137,6 +144,7 @@ export default function Channels() {
   const [editChannelType, setEditChannelType] = useState<ChannelType>('whatsapp');
   const [editChannelName, setEditChannelName] = useState('');
   const [editChannelConfig, setEditChannelConfig] = useState<Record<string, string>>({});
+  const [editAgentTemplateId, setEditAgentTemplateId] = useState('');
   const [editChannelError, setEditChannelError] = useState('');
   const [editChannelLoading, setEditChannelLoading] = useState(false);
   const [editChannelSaving, setEditChannelSaving] = useState(false);
@@ -145,6 +153,7 @@ export default function Channels() {
     setEditChannelId(ch.id);
     setEditChannelType(ch.type as ChannelType);
     setEditChannelName(ch.name);
+    setEditAgentTemplateId((ch as ChannelRow & { agentTemplateId?: string | null }).agentTemplateId ?? '');
     setEditChannelConfig({});
     setEditChannelError('');
     setEditChannelLoading(true);
@@ -172,6 +181,7 @@ export default function Channels() {
     try {
       const res = await api.patch<ApiResponse<Channel>>(`/api/channels/${editChannelId}`, {
         name: editChannelName,
+        agentTemplateId: editAgentTemplateId || null,
         config: editChannelConfig,
       });
       if (!res.ok) { setEditChannelError(res.error); return; }
@@ -212,6 +222,15 @@ export default function Channels() {
               <div>
                 <label className="label">Display name</label>
                 <input className="input" placeholder={`My ${schema.label}`} value={addName} onChange={(e) => setAddName(e.target.value)} required />
+              </div>
+              <div>
+                <label className="label">Agent template</label>
+                <select className="input" value={addAgentTemplateId} onChange={(e) => setAddAgentTemplateId(e.target.value)}>
+                  <option value="">Use default routing</option>
+                  {agents.filter((agent) => agent.isActive).map((agent) => (
+                    <option key={agent.id} value={agent.id}>{agent.name}</option>
+                  ))}
+                </select>
               </div>
               {(addType === 'whatsapp' || addType === 'wechat_personal') && (
                 <p className="text-sm text-gray-500 bg-gray-50 rounded-lg p-3">
@@ -290,6 +309,15 @@ export default function Channels() {
                 <div>
                   <label className="label">Display name</label>
                   <input className="input" value={editChannelName} onChange={(e) => setEditChannelName(e.target.value)} required />
+                </div>
+                <div>
+                  <label className="label">Agent template</label>
+                  <select className="input" value={editAgentTemplateId} onChange={(e) => setEditAgentTemplateId(e.target.value)}>
+                    <option value="">Use default routing</option>
+                    {agents.filter((agent) => agent.isActive).map((agent) => (
+                      <option key={agent.id} value={agent.id}>{agent.name}</option>
+                    ))}
+                  </select>
                 </div>
                 {editSchema.fields.map((field) => (
                   <div key={field.key}>

@@ -23,6 +23,21 @@ const configSchema = z.object({
 const createSchema = z.object({
   name:      z.string().min(1).max(80),
   type:      z.enum(BACKEND_TYPES),
+  modelProviderId: z.string().nullable().optional(),
+  runtimeType: z.string().min(1).max(40).default('openclaw'),
+  skills: z.array(z.object({
+    name: z.string().min(1).max(80),
+    description: z.string().max(500).optional(),
+    enabled: z.boolean().optional(),
+  })).default([]),
+  workspace: z.array(z.object({
+    path: z.string().min(1).max(200),
+    content: z.string().max(20000),
+  })).default([]),
+  knowledgeBase: z.array(z.object({
+    title: z.string().min(1).max(120),
+    content: z.string().max(20000),
+  })).default([]),
   config:    configSchema,
   isActive:  z.boolean().default(true),
   isDefault: z.boolean().default(false),
@@ -31,6 +46,21 @@ const createSchema = z.object({
 const updateSchema = z.object({
   name:      z.string().min(1).max(80).optional(),
   type:      z.enum(BACKEND_TYPES).optional(),
+  modelProviderId: z.string().nullable().optional(),
+  runtimeType: z.string().min(1).max(40).optional(),
+  skills: z.array(z.object({
+    name: z.string().min(1).max(80),
+    description: z.string().max(500).optional(),
+    enabled: z.boolean().optional(),
+  })).optional(),
+  workspace: z.array(z.object({
+    path: z.string().min(1).max(200),
+    content: z.string().max(20000),
+  })).optional(),
+  knowledgeBase: z.array(z.object({
+    title: z.string().min(1).max(120),
+    content: z.string().max(20000),
+  })).optional(),
   config:    configSchema.optional(),
   isActive:  z.boolean().optional(),
   isDefault: z.boolean().optional(),
@@ -48,7 +78,9 @@ aiBackendsRouter.get('/', async (req, res) => {
     orderBy: [{ createdAt: 'asc' }],
     select: {
       id: true, tenantId: true, name: true, type: true,
+      modelProviderId: true, runtimeType: true, skills: true, workspace: true, knowledgeBase: true,
       isActive: true, isDefault: true, createdAt: true, updatedAt: true,
+      modelProvider: { select: { id: true, name: true, provider: true } },
     },
   });
 
@@ -74,7 +106,20 @@ aiBackendsRouter.post('/', requireAdmin, validate(createSchema), async (req, res
     ? { ...body.config, bridgeToken: body.config.bridgeToken || generateId('brg') }
     : body.config;
   await db.aiBackend.create({
-    data: { id, tenantId, name: body.name, type: body.type, config, isActive: body.isActive, isDefault: body.isDefault },
+    data: {
+      id,
+      tenantId,
+      name: body.name,
+      type: body.type,
+      modelProviderId: body.modelProviderId || null,
+      runtimeType: body.runtimeType,
+      skills: body.skills,
+      workspace: body.workspace,
+      knowledgeBase: body.knowledgeBase,
+      config,
+      isActive: body.isActive,
+      isDefault: body.isDefault,
+    },
   });
 
   await audit({ tenantId, memberId: userId, action: 'create_ai_backend', resource: 'ai_backend', resourceId: id });

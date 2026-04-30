@@ -65,6 +65,7 @@ model Tenant {
   endUsers      EndUser[]
   auditLogs     AuditLog[]
   aiBackends    AiBackend[]
+  modelProviders ModelProvider[]
 
   @@map("tenants")
 }
@@ -110,6 +111,7 @@ model Session {
 model Channel {
   id        String        @id
   tenantId  String        @map("tenant_id")
+  agentTemplateId String? @map("agent_template_id")
   type      ChannelType
   name      String
   status    ChannelStatus @default(disconnected)
@@ -118,10 +120,12 @@ model Channel {
   updatedAt DateTime      @updatedAt @map("updated_at")
 
   tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  agentTemplate AiBackend?     @relation("ChannelAgentTemplate", fields: [agentTemplateId], references: [id], onDelete: SetNull)
   conversations Conversation[]
   endUsers      EndUser[]
 
   @@index([tenantId])
+  @@index([agentTemplateId])
   @@map("channels")
 }
 
@@ -177,6 +181,7 @@ model Conversation {
   channelId String   @map("channel_id")
   endUserId String   @map("end_user_id")
   backendId String?  @map("backend_id")
+  modelProviderId String? @map("model_provider_id")
   metadata  Json     @default("{}")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -184,6 +189,7 @@ model Conversation {
   channel  Channel    @relation(fields: [channelId], references: [id], onDelete: Cascade)
   endUser  EndUser    @relation(fields: [endUserId], references: [id], onDelete: Cascade)
   backend  AiBackend? @relation(fields: [backendId], references: [id], onDelete: SetNull)
+  modelProvider ModelProvider? @relation(fields: [modelProviderId], references: [id], onDelete: SetNull)
   messages Message[]
 
   @@index([tenantId])
@@ -208,17 +214,44 @@ model Message {
   @@map("messages")
 }
 
+/// LLM provider account shared by one or more agent templates.
+model ModelProvider {
+  id        String   @id
+  tenantId  String   @map("tenant_id")
+  name      String
+  provider  String
+  baseUrl   String?  @map("base_url")
+  apiKey    String?  @map("api_key")
+  models    Json     @default("[]")
+  config    Json     @default("{}")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  agentTemplates AiBackend[]
+  conversations Conversation[]
+
+  @@index([tenantId])
+  @@map("model_providers")
+}
+
 /// Admin-configured AI providers. End-users pick one at the start of a conversation.
 /// Many-to-many with EndUser (via selectedBackend) and Conversation (via backendId).
 model AiBackend {
   id        String   @id
   tenantId  String   @map("tenant_id")
+  modelProviderId String? @map("model_provider_id")
   /// Human-readable name shown to end-users in the selection menu
   name      String
   /// Provider type: openai | anthropic | openrouter | pulse | openclaw | custom
   type      String
   /// Provider-specific config: { apiKey?, model?, baseUrl?, pulseApiUrl?, openClawUrl? }
   config    Json     @default("{}")
+  runtimeType String  @default("openclaw") @map("runtime_type")
+  skills      Json    @default("[]")
+  workspace   Json    @default("[]")
+  knowledgeBase Json  @default("[]") @map("knowledge_base")
   isActive  Boolean  @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -227,11 +260,14 @@ model AiBackend {
   isDefault     Boolean  @default(false) @map("is_default")
 
   tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  modelProvider ModelProvider? @relation(fields: [modelProviderId], references: [id], onDelete: SetNull)
+  channels      Channel[]      @relation("ChannelAgentTemplate")
   endUsers      EndUserBackend[]
   conversations Conversation[]
   messages      Message[]
 
   @@index([tenantId])
+  @@index([modelProviderId])
   @@map("ai_backends")
 }
 

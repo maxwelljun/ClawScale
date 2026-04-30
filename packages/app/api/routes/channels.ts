@@ -25,11 +25,13 @@ const CHANNEL_TYPES = [
 const createSchema = z.object({
   type: z.enum(CHANNEL_TYPES),
   name: z.string().min(1).max(80),
+  agentTemplateId: z.string().nullable().optional(),
   config: z.record(z.unknown()).default({}),
 });
 
 const updateSchema = z.object({
   name: z.string().min(1).max(80).optional(),
+  agentTemplateId: z.string().nullable().optional(),
   config: z.record(z.unknown()).optional(),
 });
 
@@ -39,6 +41,8 @@ const channelListSelect = {
   type: true,
   name: true,
   status: true,
+  agentTemplateId: true,
+  agentTemplate: { select: { id: true, name: true, runtimeType: true } },
   createdAt: true,
   updatedAt: true,
   // config intentionally omitted (contains secrets)
@@ -69,6 +73,7 @@ channelsRouter.post('/', requireAdmin, validate(createSchema), async (req, res) 
     data: {
       id,
       tenantId,
+      agentTemplateId: body.agentTemplateId || null,
       type: body.type,
       name: body.name,
       config: body.config as any,

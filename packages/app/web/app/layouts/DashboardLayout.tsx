@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Users, UserCheck, Radio, Settings, LogOut, MessageSquare, BotMessageSquare, Globe } from 'lucide-react';
+import { LayoutDashboard, Users, UserCheck, Radio, Settings, LogOut, MessageSquare, BotMessageSquare, Globe, BrainCircuit } from 'lucide-react';
 import { isAuthenticated, clearAuth, getUser, getTenant } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import type { TenantSettings } from '@clawscale/shared';
@@ -8,8 +8,9 @@ import type { TenantSettings } from '@clawscale/shared';
 const navItems: { href: string; icon: typeof LayoutDashboard; label: string; exact?: boolean }[] = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', exact: true },
   { href: '/conversations', icon: MessageSquare, label: 'Conversations' },
+  { href: '/models', icon: BrainCircuit, label: 'Models' },
+  { href: '/agents', icon: BotMessageSquare, label: 'Agents' },
   { href: '/channels', icon: Radio, label: 'Channels' },
-  { href: '/ai-backends', icon: BotMessageSquare, label: 'AI Backends' },
   { href: '/end-users', icon: UserCheck, label: 'End Users' },
   { href: '/users', icon: Users, label: 'Members' },
   { href: '/onboarding', icon: Globe, label: 'Onboarding' },

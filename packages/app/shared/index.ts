@@ -87,6 +87,54 @@ export interface TenantSettings {
 }
 
 export type AiBackendType = 'llm' | 'openclaw' | 'palmos'  | 'claude-code' | 'claude-agent' | 'custom' | 'cli-bridge';
+export type ModelProviderType =
+  | 'openai'
+  | 'anthropic'
+  | 'minimax'
+  | 'google'
+  | 'mistral'
+  | 'deepseek'
+  | 'openrouter'
+  | 'ollama'
+  | 'xai'
+  | 'custom';
+
+export interface ModelProviderDescriptor {
+  type: ModelProviderType;
+  label: string;
+  defaultBaseUrl?: string;
+  modelPlaceholder: string;
+  authLabel: string;
+}
+
+export const MODEL_PROVIDER_DESCRIPTORS: Record<ModelProviderType, ModelProviderDescriptor> = {
+  openai: { type: 'openai', label: 'OpenAI', defaultBaseUrl: 'https://api.openai.com/v1', modelPlaceholder: 'gpt-5.4-mini', authLabel: 'API Key' },
+  anthropic: { type: 'anthropic', label: 'Anthropic', defaultBaseUrl: 'https://api.anthropic.com', modelPlaceholder: 'claude-sonnet-4-6', authLabel: 'API Key' },
+  minimax: { type: 'minimax', label: 'MiniMax', defaultBaseUrl: 'https://api.minimaxi.com/v1', modelPlaceholder: 'MiniMax-M2.7-highspeed', authLabel: 'API Key' },
+  google: { type: 'google', label: 'Google Gemini', defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', modelPlaceholder: 'gemini-2.5-pro', authLabel: 'API Key' },
+  mistral: { type: 'mistral', label: 'Mistral', defaultBaseUrl: 'https://api.mistral.ai/v1', modelPlaceholder: 'mistral-large-latest', authLabel: 'API Key' },
+  deepseek: { type: 'deepseek', label: 'DeepSeek', defaultBaseUrl: 'https://api.deepseek.com', modelPlaceholder: 'deepseek-chat', authLabel: 'API Key' },
+  openrouter: { type: 'openrouter', label: 'OpenRouter', defaultBaseUrl: 'https://openrouter.ai/api/v1', modelPlaceholder: 'openai/gpt-4o', authLabel: 'API Key' },
+  ollama: { type: 'ollama', label: 'Ollama', defaultBaseUrl: 'http://localhost:11434/v1', modelPlaceholder: 'llama3.1', authLabel: 'Optional API Key' },
+  xai: { type: 'xai', label: 'xAI', defaultBaseUrl: 'https://api.x.ai/v1', modelPlaceholder: 'grok-4', authLabel: 'API Key' },
+  custom: { type: 'custom', label: 'Custom OpenAI-compatible', modelPlaceholder: 'provider/model-name', authLabel: 'API Key' },
+};
+
+export const MODEL_PROVIDER_TYPES = Object.keys(MODEL_PROVIDER_DESCRIPTORS) as ModelProviderType[];
+
+export interface ModelProvider {
+  id: string;
+  tenantId: string;
+  name: string;
+  provider: ModelProviderType | string;
+  baseUrl: string | null;
+  apiKey?: string | null;
+  models: string[];
+  config: Record<string, unknown>;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
 
 /** Transport method — how ClawScale connects to the backend. */
 export type Transport = 'http' | 'sse' | 'websocket' | 'pty-websocket';
@@ -271,15 +319,44 @@ export const BACKEND_TYPE_DESCRIPTORS: Record<AiBackendType, BackendTypeDescript
 export interface AiBackend {
   id: string;
   tenantId: string;
+  modelProviderId?: string | null;
   name: string;
   type: AiBackendType;
   config: AiBackendProviderConfig;
+  runtimeType?: string;
+  skills?: AgentSkill[];
+  workspace?: AgentWorkspaceFile[];
+  knowledgeBase?: AgentKnowledgeItem[];
   isActive: boolean;
   /** True for the built-in ClawScale default agent (one per tenant). */
   isDefault: boolean;
   createdAt: string;
   updatedAt: string;
 }
+
+export interface AgentSkill {
+  name: string;
+  description?: string;
+  enabled?: boolean;
+}
+
+export interface AgentWorkspaceFile {
+  path: string;
+  content: string;
+}
+
+export interface AgentKnowledgeItem {
+  title: string;
+  content: string;
+}
+
+export type AgentRuntimeType = 'openclaw' | 'hermass' | 'custom';
+
+export const AGENT_RUNTIME_DESCRIPTORS: Record<AgentRuntimeType, { label: string; imageHint: string }> = {
+  openclaw: { label: 'OpenClaw', imageHint: '1panel/openclaw:2026.3.28' },
+  hermass: { label: 'Hermass', imageHint: 'hermass/hermass:latest' },
+  custom: { label: 'Custom Runtime', imageHint: 'custom/runtime:latest' },
+};
 
 export const AI_PROVIDER_LABELS: Record<AiBackendType, string> = Object.fromEntries(
   Object.values(BACKEND_TYPE_DESCRIPTORS).map((d) => [d.type, d.label]),
@@ -340,6 +417,7 @@ export type ChannelStatus = 'connected' | 'disconnected' | 'pending' | 'error';
 export interface Channel {
   id: string;
   tenantId: string;
+  agentTemplateId?: string | null;
   type: ChannelType;
   name: string;
   status: ChannelStatus;

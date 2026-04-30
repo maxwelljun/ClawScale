@@ -44,7 +44,7 @@ export default function Dashboard() {
           value={stats?.totalEndUsers ?? '—'} sub="registered" />
         <StatCard icon={<Users className="h-5 w-5 text-teal-500" />} label="Team members"
           value={stats?.totalMembers ?? '—'} sub={`${stats?.activeMembers ?? 0} active`} />
-        <StatCard icon={<Bot className="h-5 w-5 text-teal-500" />} label="AI backends"
+        <StatCard icon={<Bot className="h-5 w-5 text-teal-500" />} label="Agents"
           value={stats?.totalBackends ?? '—'} sub="configured" />
       </div>
 
@@ -55,8 +55,8 @@ export default function Dashboard() {
         <QuickCard to="/channels" title="Channels"
           desc="Connect WhatsApp, Telegram, Slack, and more to your bot."
           icon={<Radio className="h-5 w-5" />} />
-        <QuickCard to="/ai-backends" title="AI Backends"
-          desc="Configure and manage your AI providers and models."
+        <QuickCard to="/agents" title="Agents"
+          desc="Create agent templates and bind them to channels."
           icon={<Bot className="h-5 w-5" />} />
       </div>
     </div>

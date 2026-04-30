@@ -51,6 +51,9 @@ function ConversationDetail({ id }: { id: string }) {
             {conv.channel?.name} · {conv.channel?.type}
             {conv.endUser?.email && ` · ${conv.endUser.email}`}
           </p>
+          <p className="text-xs text-gray-400 mt-1">
+            Agent: {conv.backend?.name ?? 'default routing'} · Model: {conv.modelProvider?.name ?? 'agent/default'}
+          </p>
         </div>
         {conv.endUser?.status === 'blocked' && (
           <span className="badge-red text-xs">Blocked</span>
@@ -154,6 +157,9 @@ function ConversationList() {
                 </p>
                 <p className="text-xs text-gray-400 mt-0.5">
                   {conv.channel?.name} · {conv.channel?.type} · {(conv._count?.messages ?? 0)} messages
+                </p>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  {conv.backend?.name ?? 'default routing'} · {conv.modelProvider?.name ?? 'default model'}
                 </p>
               </div>
               <div className="text-right shrink-0">

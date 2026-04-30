@@ -12,7 +12,7 @@ ENV NODE_ENV=production
 
 COPY <<'EOF' /app/start.sh
 #!/bin/sh
-cd /app/packages/app && npx prisma db push --skip-generate
+cd /app/packages/app && npx prisma migrate deploy || npx prisma db push --skip-generate
 export HOST=0.0.0.0 PORT=4040
 exec node dist/api/index.js
 EOF

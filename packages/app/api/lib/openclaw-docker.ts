@@ -29,6 +29,22 @@ export interface OpenClawDockerRuntime {
   workspaceDir: string;
 }
 
+export interface OpenClawRuntimeTemplate {
+  name?: string;
+  modelProvider?: {
+    id: string;
+    provider: string;
+    baseUrl?: string | null;
+    apiKey?: string | null;
+    model?: string | null;
+    api?: string | null;
+  } | null;
+  systemPrompt?: string | null;
+  skills?: Array<{ name: string; description?: string; enabled?: boolean }>;
+  workspace?: Array<{ path: string; content: string }>;
+  knowledgeBase?: Array<{ title: string; content: string }>;
+}
+
 const OPENCLAW_IMAGE = process.env.OPENCLAW_IMAGE ?? '1panel/openclaw:latest';
 const OPENCLAW_DATA_DIR = process.env.OPENCLAW_DATA_DIR ?? path.resolve(process.cwd(), 'data', 'tenants');
 const OPENCLAW_GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN ?? '';
@@ -161,7 +177,7 @@ function mergeObject(base: JsonObject, patch: JsonObject): JsonObject {
   return result;
 }
 
-function defaultRuntimeConfig(identity: OpenClawRuntimeIdentity): JsonObject {
+function defaultRuntimeConfig(identity: OpenClawRuntimeIdentity, template?: OpenClawRuntimeTemplate): JsonObject {
   const config: JsonObject = {
     gateway: {
       auth: {
@@ -184,21 +200,26 @@ function defaultRuntimeConfig(identity: OpenClawRuntimeIdentity): JsonObject {
     },
   };
 
-  if (!OPENCLAW_MODEL_PROVIDER_ID || !OPENCLAW_MODEL_PROVIDER_BASE_URL || !OPENCLAW_DEFAULT_MODEL) {
+  const providerId = template?.modelProvider?.id || OPENCLAW_MODEL_PROVIDER_ID;
+  const providerBaseUrl = template?.modelProvider?.baseUrl || OPENCLAW_MODEL_PROVIDER_BASE_URL;
+  const providerApiKey = template?.modelProvider?.apiKey || (OPENCLAW_MODEL_PROVIDER_API_KEY ? '${OPENCLAW_MODEL_PROVIDER_API_KEY}' : '');
+  const providerApi = template?.modelProvider?.api || OPENCLAW_MODEL_PROVIDER_API;
+  const defaultModel = template?.modelProvider?.model || OPENCLAW_DEFAULT_MODEL;
+  if (!providerId || !providerBaseUrl || !defaultModel) {
     return config;
   }
 
   return mergeObject(config, {
     models: {
       providers: {
-        [OPENCLAW_MODEL_PROVIDER_ID]: {
-          baseUrl: OPENCLAW_MODEL_PROVIDER_BASE_URL,
-          apiKey: '${OPENCLAW_MODEL_PROVIDER_API_KEY}',
-          api: OPENCLAW_MODEL_PROVIDER_API,
+        [providerId]: {
+          baseUrl: providerBaseUrl,
+          ...(providerApiKey ? { apiKey: providerApiKey } : {}),
+          api: providerApi,
           models: [
             {
-              id: OPENCLAW_DEFAULT_MODEL,
-              name: OPENCLAW_DEFAULT_MODEL,
+              id: defaultModel,
+              name: defaultModel,
               reasoning: true,
               input: ['text'],
               contextWindow: 200000,
@@ -211,14 +232,15 @@ function defaultRuntimeConfig(identity: OpenClawRuntimeIdentity): JsonObject {
     agents: {
       defaults: {
         skipBootstrap: true,
-        model: { primary: `${OPENCLAW_MODEL_PROVIDER_ID}/${OPENCLAW_DEFAULT_MODEL}` },
+        model: { primary: `${providerId}/${defaultModel}` },
+        ...(template?.systemPrompt ? { systemPrompt: template.systemPrompt, instructions: template.systemPrompt } : {}),
       },
     },
   });
 }
 
-async function writeDefaultRuntimeConfig(stateDir: string, identity: OpenClawRuntimeIdentity): Promise<void> {
-  const patch = defaultRuntimeConfig(identity);
+async function writeDefaultRuntimeConfig(stateDir: string, identity: OpenClawRuntimeIdentity, template?: OpenClawRuntimeTemplate): Promise<void> {
+  const patch = defaultRuntimeConfig(identity, template);
   const configPath = path.join(stateDir, 'openclaw.json');
   let existing: JsonObject = {};
   try {
@@ -234,6 +256,53 @@ async function writeDefaultRuntimeConfig(stateDir: string, identity: OpenClawRun
   }
 
   await fs.writeFile(configPath, `${JSON.stringify(mergeObject(existing, patch), null, 2)}\n`);
+}
+
+function safeRelativePath(value: string): string {
+  const normalized = value.replace(/\\/g, '/').replace(/^\/+/, '');
+  if (!normalized || normalized.includes('..')) return 'README.md';
+  return normalized;
+}
+
+async function writeTemplateWorkspace(workspaceDir: string, template?: OpenClawRuntimeTemplate): Promise<void> {
+  if (!template) return;
+  const root = path.join(workspaceDir, '.clawbot-template');
+  await fs.mkdir(root, { recursive: true });
+
+  const workspaceFiles = template.workspace ?? [];
+  for (const file of workspaceFiles) {
+    const target = path.join(workspaceDir, safeRelativePath(file.path));
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.writeFile(target, file.content);
+  }
+
+  const skills = (template.skills ?? []).filter((skill) => skill.enabled !== false);
+  if (skills.length > 0) {
+    await fs.writeFile(path.join(root, 'skills.md'), skills.map((skill) =>
+      `- ${skill.name}${skill.description ? `: ${skill.description}` : ''}`,
+    ).join('\n') + '\n');
+  }
+
+  const knowledge = template.knowledgeBase ?? [];
+  if (knowledge.length > 0) {
+    await fs.writeFile(path.join(root, 'knowledge.md'), knowledge.map((item) =>
+      `# ${item.title}\n\n${item.content}`,
+    ).join('\n\n---\n\n') + '\n');
+  }
+
+  const manifest = {
+    name: template.name,
+    modelProvider: template.modelProvider ? {
+      id: template.modelProvider.id,
+      provider: template.modelProvider.provider,
+      baseUrl: template.modelProvider.baseUrl,
+      model: template.modelProvider.model,
+    } : null,
+    skills: skills.map((skill) => skill.name),
+    workspaceFiles: workspaceFiles.map((file) => file.path),
+    knowledgeItems: knowledge.map((item) => item.title),
+  };
+  await fs.writeFile(path.join(root, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
 }
 
 async function inspectContainer(name: string): Promise<DockerInspect | null> {
@@ -343,7 +412,7 @@ async function createContainer(
   ]);
 }
 
-async function doEnsureOpenClawDockerRuntime(identity: OpenClawRuntimeIdentity): Promise<OpenClawDockerRuntime> {
+async function doEnsureOpenClawDockerRuntime(identity: OpenClawRuntimeIdentity, template?: OpenClawRuntimeTemplate): Promise<OpenClawDockerRuntime> {
   const containerName = openClawContainerName(identity);
   const { stateDir, workspaceDir } = openClawRuntimeDirs(identity);
   const runtimeDepsDir = OPENCLAW_SHARED_RUNTIME_DEPS ? openClawSharedRuntimeDepsDir() : null;
@@ -353,19 +422,26 @@ async function doEnsureOpenClawDockerRuntime(identity: OpenClawRuntimeIdentity):
 
   let inspect = await inspectContainer(containerName);
   if (!inspect) {
-    await writeDefaultRuntimeConfig(stateDir, identity);
+    await writeDefaultRuntimeConfig(stateDir, identity, template);
+    await writeTemplateWorkspace(workspaceDir, template);
     await chownRecursive(stateDir, OPENCLAW_CONTAINER_UID, OPENCLAW_CONTAINER_GID);
     await chownRecursive(workspaceDir, OPENCLAW_CONTAINER_UID, OPENCLAW_CONTAINER_GID);
     if (runtimeDepsDir) await chownRecursive(runtimeDepsDir, OPENCLAW_CONTAINER_UID, OPENCLAW_CONTAINER_GID);
     await createContainer(identity, containerName, stateDir, workspaceDir, runtimeDepsDir);
     inspect = await inspectContainer(containerName);
   } else if (!inspect.State?.Running) {
-    await writeDefaultRuntimeConfig(stateDir, identity);
+    await writeDefaultRuntimeConfig(stateDir, identity, template);
+    await writeTemplateWorkspace(workspaceDir, template);
     await chownRecursive(stateDir, OPENCLAW_CONTAINER_UID, OPENCLAW_CONTAINER_GID);
     await chownRecursive(workspaceDir, OPENCLAW_CONTAINER_UID, OPENCLAW_CONTAINER_GID);
     if (runtimeDepsDir) await chownRecursive(runtimeDepsDir, OPENCLAW_CONTAINER_UID, OPENCLAW_CONTAINER_GID);
     await docker(['start', containerName]);
     inspect = await inspectContainer(containerName);
+  } else {
+    await writeDefaultRuntimeConfig(stateDir, identity, template);
+    await writeTemplateWorkspace(workspaceDir, template);
+    await chownRecursive(stateDir, OPENCLAW_CONTAINER_UID, OPENCLAW_CONTAINER_GID);
+    await chownRecursive(workspaceDir, OPENCLAW_CONTAINER_UID, OPENCLAW_CONTAINER_GID);
   }
 
   if (!inspect) throw new Error(`Failed to inspect OpenClaw container ${containerName}`);
@@ -382,12 +458,12 @@ async function doEnsureOpenClawDockerRuntime(identity: OpenClawRuntimeIdentity):
   };
 }
 
-export async function ensureOpenClawDockerRuntime(identity: OpenClawRuntimeIdentity): Promise<OpenClawDockerRuntime> {
+export async function ensureOpenClawDockerRuntime(identity: OpenClawRuntimeIdentity, template?: OpenClawRuntimeTemplate): Promise<OpenClawDockerRuntime> {
   const key = openClawContainerName(identity);
   const existing = ensureTasks.get(key);
   if (existing) return existing;
 
-  const task = doEnsureOpenClawDockerRuntime(identity);
+  const task = doEnsureOpenClawDockerRuntime(identity, template);
   ensureTasks.set(key, task);
   try {
     return await task;
@@ -396,14 +472,14 @@ export async function ensureOpenClawDockerRuntime(identity: OpenClawRuntimeIdent
   }
 }
 
-export function prewarmOpenClawDockerRuntime(identity: OpenClawRuntimeIdentity): void {
+export function prewarmOpenClawDockerRuntime(identity: OpenClawRuntimeIdentity, template?: OpenClawRuntimeTemplate): void {
   const key = openClawContainerName(identity);
   if (prewarmTasks.has(key)) return;
 
   const task = (async () => {
     const startedAt = Date.now();
     try {
-      const runtime = await ensureOpenClawDockerRuntime(identity);
+      const runtime = await ensureOpenClawDockerRuntime(identity, template);
       const headers = {
         Authorization: `Bearer ${runtime.gatewayToken}`,
         'Content-Type': 'application/json',

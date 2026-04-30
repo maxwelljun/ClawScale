@@ -576,10 +576,14 @@ export interface Conversation {
   tenantId: string;
   channelId: string;
   endUserId: string;
+  backendId?: string | null;
+  modelProviderId?: string | null;
   createdAt: string;
   updatedAt: string;
   endUser?: Pick<EndUser, 'id' | 'externalId' | 'name' | 'email' | 'status'>;
   channel?: { id: string; name: string; type: string };
+  backend?: { id: string; name: string; runtimeType?: string | null } | null;
+  modelProvider?: { id: string; name: string; provider: string } | null;
   messages?: Message[];
   _count?: { messages: number };
 }

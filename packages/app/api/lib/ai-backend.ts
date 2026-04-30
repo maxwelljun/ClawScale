@@ -18,7 +18,7 @@ import type {
   ResponseFormat,
 } from '../../shared/index.js';
 import { BACKEND_TYPE_DESCRIPTORS } from '../../shared/index.js';
-import { ensureOpenClawDockerRuntime, openClawSessionKey, type OpenClawRuntimeIdentity } from './openclaw-docker.js';
+import { ensureOpenClawDockerRuntime, openClawSessionKey, type OpenClawRuntimeIdentity, type OpenClawRuntimeTemplate } from './openclaw-docker.js';
 
 export interface PalmosContext {
   endUserId: string;
@@ -52,6 +52,8 @@ export interface GenerateOptions {
   history: HistoryMessage[];
   /** OpenClaw Docker runtime isolation identity */
   openclaw?: OpenClawRuntimeIdentity;
+  /** Agent template materialized into the isolated OpenClaw runtime. */
+  openclawTemplate?: OpenClawRuntimeTemplate;
   /** Display name of the end-user sending the message */
   sender?: string;
   /** Chat platform the message came from (e.g. "telegram", "discord") */
@@ -400,7 +402,7 @@ async function handleOpenAiSdk(
   type: AiBackendType,
   cfg: AiBackendProviderConfig,
   history: HistoryMessage[],
-  options: Pick<GenerateOptions, 'openclaw' | 'platform' | 'onStream'> = {},
+  options: Pick<GenerateOptions, 'openclaw' | 'openclawTemplate' | 'platform' | 'onStream'> = {},
 ): Promise<string> {
   if (type === 'openclaw') {
     const url = cfg.baseUrl;
@@ -776,7 +778,7 @@ export async function generateReply(options: GenerateOptions): Promise<string> {
         // llm and openclaw use the OpenAI SDK client
         if (type === 'llm' || type === 'openclaw') {
           if (type === 'openclaw' && options.openclaw && process.env.OPENCLAW_DOCKER_ISOLATION !== 'false') {
-            const runtime = await ensureOpenClawDockerRuntime(options.openclaw);
+            const runtime = await ensureOpenClawDockerRuntime(options.openclaw, options.openclawTemplate);
             cfg.baseUrl = runtime.baseUrl;
             cfg.apiKey = runtime.gatewayToken;
           }

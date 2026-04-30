@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Loader2, Plus, Pencil, Save, Trash2, X, KeyRound } from 'lucide-react';
+import { Loader2, Plus, Pencil, Save, Trash2, X, KeyRound, RefreshCw, FlaskConical, Play } from 'lucide-react';
 import { api } from '@/lib/api';
 import { getUser } from '@/lib/auth';
 import type { ApiResponse, ModelProvider, ModelProviderType } from '@clawscale/shared';
@@ -34,6 +34,8 @@ export default function Models() {
   const [form, setForm] = useState<ModelForm>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [actionId, setActionId] = useState<string | null>(null);
+  const [result, setResult] = useState('');
 
   async function load() {
     const res = await api.get<ApiResponse<ModelRow[]>>('/api/models');
@@ -105,6 +107,38 @@ export default function Models() {
     if (res.ok) setRows((prev) => prev.filter((row) => row.id !== id));
   }
 
+  async function testProvider(id: string) {
+    setActionId(id); setResult('');
+    try {
+      const res = await api.post<ApiResponse<{ latencyMs: number; models: string[] }>>(`/api/models/${id}/test`, {});
+      setResult(res.ok ? `Connected in ${res.data.latencyMs}ms. Models: ${res.data.models.slice(0, 8).join(', ') || 'none returned'}` : `Test failed: ${res.error}`);
+    } finally { setActionId(null); }
+  }
+
+  async function syncProvider(id: string) {
+    setActionId(id); setResult('');
+    try {
+      const res = await api.post<ApiResponse<ModelRow>>(`/api/models/${id}/sync`, {});
+      if (res.ok) {
+        setResult(`Synced ${(res.data.models ?? []).length} models.`);
+        await load();
+      } else {
+        setResult(`Sync failed: ${res.error}`);
+      }
+    } finally { setActionId(null); }
+  }
+
+  async function runProvider(row: ModelRow) {
+    const prompt = window.prompt('Test prompt', 'Reply with OK.');
+    if (!prompt) return;
+    const model = row.models?.[0];
+    setActionId(row.id); setResult('');
+    try {
+      const res = await api.post<ApiResponse<{ latencyMs: number; model: string; reply: string }>>(`/api/models/${row.id}/run`, { prompt, model });
+      setResult(res.ok ? `Run ${res.data.model} in ${res.data.latencyMs}ms:\n${res.data.reply}` : `Run failed: ${res.error}`);
+    } finally { setActionId(null); }
+  }
+
   return (
     <div className="p-8 max-w-5xl">
       <div className="flex items-center justify-between mb-8">
@@ -160,6 +194,12 @@ export default function Models() {
         </div>
       )}
 
+      {result && (
+        <div className="mb-6 rounded-lg border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-900 whitespace-pre-wrap">
+          {result}
+        </div>
+      )}
+
       {loading ? (
         <div className="flex items-center justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-teal-500" /></div>
       ) : rows.length === 0 ? (
@@ -182,6 +222,15 @@ export default function Models() {
                 </div>
                 {isAdmin && (
                   <div className="flex items-center gap-1">
+                    <button className="p-1.5 text-gray-400 hover:text-teal-600" onClick={() => testProvider(row.id)} title="Test connection" disabled={actionId === row.id}>
+                      {actionId === row.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <FlaskConical className="h-4 w-4" />}
+                    </button>
+                    <button className="p-1.5 text-gray-400 hover:text-teal-600" onClick={() => syncProvider(row.id)} title="Sync models" disabled={actionId === row.id}>
+                      <RefreshCw className="h-4 w-4" />
+                    </button>
+                    <button className="p-1.5 text-gray-400 hover:text-teal-600" onClick={() => runProvider(row)} title="Run test prompt" disabled={actionId === row.id}>
+                      <Play className="h-4 w-4" />
+                    </button>
                     <button className="p-1.5 text-gray-400 hover:text-gray-700" onClick={() => openEdit(row)} title="Edit"><Pencil className="h-4 w-4" /></button>
                     <button className="p-1.5 text-gray-400 hover:text-red-500" onClick={() => remove(row.id)} title="Delete"><Trash2 className="h-4 w-4" /></button>
                   </div>
@@ -199,4 +248,3 @@ export default function Models() {
     </div>
   );
 }
-

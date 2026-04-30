@@ -19,6 +19,10 @@ const modelProviderSchema = z.object({
 });
 
 const updateModelProviderSchema = modelProviderSchema.partial();
+const runSchema = z.object({
+  model: z.string().min(1).max(160).optional(),
+  prompt: z.string().min(1).max(2000).default('Reply with OK.'),
+});
 
 function redactProvider<T extends { apiKey?: string | null }>(row: T): Omit<T, 'apiKey'> & { apiKeySet: boolean } {
   const { apiKey, ...rest } = row;
@@ -27,6 +31,55 @@ function redactProvider<T extends { apiKey?: string | null }>(row: T): Omit<T, '
 
 export const modelsRouter = Router();
 modelsRouter.use(requireAuth);
+
+function defaultBaseUrl(provider: string): string {
+  switch (provider) {
+    case 'openai': return 'https://api.openai.com/v1';
+    case 'anthropic': return 'https://api.anthropic.com';
+    case 'minimax': return 'https://api.minimaxi.com/v1';
+    case 'google': return 'https://generativelanguage.googleapis.com/v1beta/openai';
+    case 'mistral': return 'https://api.mistral.ai/v1';
+    case 'deepseek': return 'https://api.deepseek.com';
+    case 'openrouter': return 'https://openrouter.ai/api/v1';
+    case 'ollama': return 'http://localhost:11434/v1';
+    case 'xai': return 'https://api.x.ai/v1';
+    default: return '';
+  }
+}
+
+function providerBaseUrl(row: { provider: string; baseUrl?: string | null }): string {
+  return (row.baseUrl || defaultBaseUrl(row.provider)).replace(/\/$/, '');
+}
+
+function providerHeaders(row: { provider: string; apiKey?: string | null }): Record<string, string> {
+  if (row.provider === 'anthropic') {
+    return {
+      'Content-Type': 'application/json',
+      ...(row.apiKey ? { 'x-api-key': row.apiKey } : {}),
+      'anthropic-version': '2023-06-01',
+    };
+  }
+  return {
+    'Content-Type': 'application/json',
+    ...(row.apiKey ? { Authorization: `Bearer ${row.apiKey}` } : {}),
+  };
+}
+
+async function fetchModelIds(row: { provider: string; baseUrl?: string | null; apiKey?: string | null }): Promise<string[]> {
+  const baseUrl = providerBaseUrl(row);
+  if (!baseUrl) throw new Error('Base URL is required for this provider');
+  const res = await fetch(`${baseUrl}/models`, {
+    headers: providerHeaders(row),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`${res.status} ${body.slice(0, 300)}`);
+  }
+  const data = await res.json() as { data?: Array<{ id?: string; name?: string }>; models?: Array<{ id?: string; name?: string } | string> };
+  const items = data.data ?? data.models ?? [];
+  return items.map((item) => typeof item === 'string' ? item : item.id ?? item.name).filter((item): item is string => Boolean(item));
+}
 
 modelsRouter.get('/', async (req, res) => {
   const { tenantId } = req.auth!;
@@ -66,6 +119,73 @@ modelsRouter.get('/:id', requireAdmin, async (req, res) => {
   res.json({ ok: true, data: redactProvider(row) });
 });
 
+modelsRouter.post('/:id/test', requireAdmin, async (req, res) => {
+  const { tenantId } = req.auth!;
+  const id = req.params.id as string;
+  const row = await db.modelProvider.findFirst({ where: { id, tenantId } });
+  if (!row) { res.status(404).json({ ok: false, error: 'Model provider not found' }); return; }
+  try {
+    const startedAt = Date.now();
+    const models = await fetchModelIds(row);
+    res.json({ ok: true, data: { latencyMs: Date.now() - startedAt, models: models.slice(0, 20) } });
+  } catch (error) {
+    res.status(502).json({ ok: false, error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+modelsRouter.post('/:id/sync', requireAdmin, async (req, res) => {
+  const { tenantId, userId } = req.auth!;
+  const id = req.params.id as string;
+  const row = await db.modelProvider.findFirst({ where: { id, tenantId } });
+  if (!row) { res.status(404).json({ ok: false, error: 'Model provider not found' }); return; }
+  try {
+    const models = await fetchModelIds(row);
+    const updated = await db.modelProvider.update({ where: { id }, data: { models } });
+    await audit({ tenantId, memberId: userId, action: 'sync_model_provider', resource: 'model_provider', resourceId: id });
+    res.json({ ok: true, data: redactProvider(updated) });
+  } catch (error) {
+    res.status(502).json({ ok: false, error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+modelsRouter.post('/:id/run', requireAdmin, validate(runSchema), async (req, res) => {
+  const { tenantId } = req.auth!;
+  const id = req.params.id as string;
+  const body = req.body as z.infer<typeof runSchema>;
+  const row = await db.modelProvider.findFirst({ where: { id, tenantId } });
+  if (!row) { res.status(404).json({ ok: false, error: 'Model provider not found' }); return; }
+  const model = body.model || (Array.isArray(row.models) ? row.models.find((m): m is string => typeof m === 'string') : undefined);
+  if (!model) { res.status(400).json({ ok: false, error: 'No model configured for this provider' }); return; }
+  try {
+    const startedAt = Date.now();
+    let reply = '';
+    if (row.provider === 'anthropic') {
+      const response = await fetch(`${providerBaseUrl(row)}/v1/messages`, {
+        method: 'POST',
+        headers: providerHeaders(row),
+        body: JSON.stringify({ model, max_tokens: 128, messages: [{ role: 'user', content: body.prompt }] }),
+        signal: AbortSignal.timeout(60_000),
+      });
+      if (!response.ok) throw new Error(`${response.status} ${(await response.text()).slice(0, 300)}`);
+      const data = await response.json() as { content?: Array<{ text?: string }> };
+      reply = data.content?.map((part) => part.text).filter(Boolean).join('') ?? '';
+    } else {
+      const response = await fetch(`${providerBaseUrl(row)}/chat/completions`, {
+        method: 'POST',
+        headers: providerHeaders(row),
+        body: JSON.stringify({ model, messages: [{ role: 'user', content: body.prompt }], max_completion_tokens: 128 }),
+        signal: AbortSignal.timeout(60_000),
+      });
+      if (!response.ok) throw new Error(`${response.status} ${(await response.text()).slice(0, 300)}`);
+      const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+      reply = data.choices?.[0]?.message?.content ?? '';
+    }
+    res.json({ ok: true, data: { model, latencyMs: Date.now() - startedAt, reply } });
+  } catch (error) {
+    res.status(502).json({ ok: false, error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
 modelsRouter.patch('/:id', requireAdmin, validate(updateModelProviderSchema), async (req, res) => {
   const { tenantId, userId } = req.auth!;
   const id = req.params.id as string;
@@ -92,4 +212,3 @@ modelsRouter.delete('/:id', requireAdmin, async (req, res) => {
   await audit({ tenantId, memberId: userId, action: 'delete_model_provider', resource: 'model_provider', resourceId: id });
   res.json({ ok: true, data: null });
 });
-

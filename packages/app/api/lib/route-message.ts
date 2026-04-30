@@ -15,6 +15,7 @@ import { db } from '../db/index.js';
 import { generateId } from './id.js';
 import { generateReply } from './ai-backend.js';
 import { prewarmOpenClawDockerRuntime } from './openclaw-docker.js';
+import type { OpenClawRuntimeTemplate } from './openclaw-docker.js';
 import { runClawscaleAgent, buildSelectionMenu } from './clawscale-agent.js';
 import type { AgentLlmConfig } from './clawscale-agent.js';
 import { parseCommand, resolveTarget, resolveAddRemoveArg, formatCommandHelp } from './slash-commands.js';
@@ -176,6 +177,9 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
       isActive: true,
       ...(channel.agentTemplateId ? { id: channel.agentTemplateId } : {}),
     },
+    include: {
+      modelProvider: true,
+    },
     orderBy: { createdAt: 'asc' },
   });
   if (channel.agentTemplateId && allBackends[0] && !activeBackendIds.includes(channel.agentTemplateId)) {
@@ -186,6 +190,21 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     });
     activeBackendIds.push(channel.agentTemplateId);
   }
+  if (channel.agentTemplateId && allBackends[0]) {
+    await db.conversation.update({
+      where: { id: conversation.id },
+      data: {
+        backendId: allBackends[0].id,
+        modelProviderId: allBackends[0].modelProviderId ?? null,
+        metadata: {
+          ...((conversation.metadata ?? {}) as Record<string, unknown>),
+          routingMode: 'channel-agent-template',
+          agentTemplateId: allBackends[0].id,
+          modelProviderId: allBackends[0].modelProviderId ?? null,
+        },
+      },
+    });
+  }
   const openClawBackends = allBackends.filter((backend) => backend.type === 'openclaw');
   if (isNewUser && openClawBackends.length > 0 && process.env.OPENCLAW_DOCKER_ISOLATION !== 'false') {
     for (const backend of openClawBackends) {
@@ -194,8 +213,11 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
         channelId,
         endUserId: endUser.id,
         backendId: backend.id,
-      });
+      }, buildOpenClawTemplate(backend));
     }
+  }
+  if (channel.agentTemplateId && allBackends[0]) {
+    console.log(`[route] channel=${channelId} agent=${allBackends[0].name} (${allBackends[0].id}) modelProvider=${allBackends[0].modelProvider?.name ?? 'none'} model=${((allBackends[0].config ?? {}) as AiBackendProviderConfig).model ?? readFirstModel(allBackends[0].modelProvider?.models) ?? 'default'}`);
   }
 
   const replies: ReplyEntry[] = [];
@@ -398,6 +420,10 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
 
           const sub = subMatch[1]!.toLowerCase();
           const subArg = (subMatch[2] ?? '').trim();
+
+          if (channel.agentTemplateId && (sub === 'invite' || sub === 'kick')) {
+            return reply(`This channel is locked to *${clawscaleName === allBackends[0]?.name ? clawscaleName : allBackends[0]?.name ?? 'the configured agent'}*. Change the channel's agent template in Channels to alter routing.`);
+          }
 
           if (sub === 'invite') {
             if (!subArg) {
@@ -729,7 +755,25 @@ async function getLinkedConversationIds(endUserId: string, linkedTo: string | nu
 }
 
 async function runBackend(
-  backend: { id: string; type: string; config: unknown; modelProviderId?: string | null },
+  backend: {
+    id: string;
+    name?: string;
+    type: string;
+    runtimeType?: string | null;
+    config: unknown;
+    modelProviderId?: string | null;
+    modelProvider?: {
+      id: string;
+      name: string;
+      provider: string;
+      baseUrl: string | null;
+      apiKey: string | null;
+      models: unknown;
+    } | null;
+    skills?: unknown;
+    workspace?: unknown;
+    knowledgeBase?: unknown;
+  },
   conversationIds: string | string[],
   palmosCtx?: { endUserId: string; tenantId: string; conversationId: string; displayName?: string },
   meta?: {
@@ -742,6 +786,9 @@ async function runBackend(
     onStream?: (text: string) => void | Promise<void>;
   },
 ): Promise<string> {
+  if (backend.runtimeType === 'hermass') {
+    return '⚠️ Hermass runtime is configured for this agent template, but the Hermass execution adapter is not implemented yet.';
+  }
   const history = backend.type === 'openclaw' && meta?.currentMessage
     ? [{
         role: 'user' as const,
@@ -750,14 +797,14 @@ async function runBackend(
       }]
     : await loadHistory(conversationIds, backend.id);
   const cfg = { ...((backend.config ?? {}) as AiBackendProviderConfig) };
-  if (backend.modelProviderId) {
-    const provider = await db.modelProvider.findUnique({ where: { id: backend.modelProviderId } });
-    if (provider) {
-      const models = Array.isArray(provider.models) ? provider.models.filter((m): m is string => typeof m === 'string') : [];
-      cfg.baseUrl ??= provider.baseUrl ?? undefined;
-      cfg.apiKey ??= provider.apiKey ?? undefined;
-      cfg.model ??= models[0];
-    }
+  const provider = backend.modelProviderId
+    ? backend.modelProvider ?? await db.modelProvider.findUnique({ where: { id: backend.modelProviderId } })
+    : null;
+  if (provider) {
+    const models = Array.isArray(provider.models) ? provider.models.filter((m): m is string => typeof m === 'string') : [];
+    cfg.baseUrl ??= provider.baseUrl ?? undefined;
+    cfg.apiKey ??= provider.apiKey ?? undefined;
+    cfg.model ??= models[0];
   }
   // Pass backend ID through for cli-bridge WebSocket lookup
   (cfg as any).__backendId = backend.id;
@@ -778,6 +825,9 @@ async function runBackend(
           },
         }
       : {}),
+    ...(backend.type === 'openclaw'
+      ? { openclawTemplate: buildOpenClawTemplate({ ...backend, config: cfg, modelProvider: provider }) }
+      : {}),
     sender: meta?.sender,
     platform: meta?.platform,
     onStream: meta?.onStream,
@@ -790,4 +840,47 @@ async function runBackend(
       }).catch((err: unknown) => console.error('[config-update] Failed to persist config:', err));
     },
   });
+}
+
+function readFirstModel(value: unknown): string | undefined {
+  return Array.isArray(value) ? value.find((item): item is string => typeof item === 'string' && item.length > 0) : undefined;
+}
+
+function readJsonArray<T>(value: unknown): T[] {
+  return Array.isArray(value) ? value as T[] : [];
+}
+
+function buildOpenClawTemplate(backend: {
+  id: string;
+  name?: string;
+  config: unknown;
+  modelProvider?: {
+    id: string;
+    name: string;
+    provider: string;
+    baseUrl: string | null;
+    apiKey: string | null;
+    models: unknown;
+  } | null;
+  skills?: unknown;
+  workspace?: unknown;
+  knowledgeBase?: unknown;
+}): OpenClawRuntimeTemplate {
+  const cfg = (backend.config ?? {}) as AiBackendProviderConfig;
+  const model = cfg.model ?? readFirstModel(backend.modelProvider?.models) ?? null;
+  return {
+    name: backend.name,
+    systemPrompt: cfg.systemPrompt ?? null,
+    modelProvider: backend.modelProvider ? {
+      id: backend.modelProvider.id,
+      provider: backend.modelProvider.provider,
+      baseUrl: backend.modelProvider.baseUrl,
+      apiKey: backend.modelProvider.apiKey,
+      model,
+      api: 'openai-completions',
+    } : null,
+    skills: readJsonArray(backend.skills),
+    workspace: readJsonArray(backend.workspace),
+    knowledgeBase: readJsonArray(backend.knowledgeBase),
+  };
 }

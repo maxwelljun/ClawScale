@@ -27,6 +27,8 @@ conversationsRouter.get('/', async (req, res) => {
       channel: {
         select: { id: true, name: true, type: true },
       },
+      backend: { select: { id: true, name: true, runtimeType: true } },
+      modelProvider: { select: { id: true, name: true, provider: true } },
       _count: { select: { messages: true } },
     },
     orderBy: { updatedAt: 'desc' },
@@ -48,6 +50,8 @@ conversationsRouter.get('/:id', async (req, res) => {
     include: {
       endUser: true,
       channel: { select: { id: true, name: true, type: true } },
+      backend: { select: { id: true, name: true, runtimeType: true } },
+      modelProvider: { select: { id: true, name: true, provider: true } },
       messages: {
         orderBy: { createdAt: 'asc' },
         take: limit,

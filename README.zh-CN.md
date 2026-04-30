@@ -298,6 +298,34 @@ packages/
 | `OPENCLAW_SHARED_RUNTIME_DEPS` | 在隔离 runtime 之间共享 OpenClaw 插件依赖缓存，同时保持 state/workspace 隔离（默认：`true`） |
 | `OPENCLAW_STREAM` | 在 OpenClaw 支持时使用 OpenAI-compatible 流式 chat 调用（默认：`true`） |
 
+## 运维脚本
+
+脚本位于 `scripts/`，默认部署目标为 `ubuntu@43.128.225.9:/root/ClawScale`，默认分支为 `dev`。密码不写入仓库；如果使用密码登录，请在执行前设置 `SSHPASS`。
+
+```bash
+export SSHPASS='your-ssh-password'
+```
+
+| 脚本 | 用途 |
+|---|---|
+| `scripts/push-dev.sh` | 使用 `gh` token 通过 GitHub HTTPS 推送当前 `dev` 分支 |
+| `scripts/remote-clean-containers.sh` | 停止 compose 服务并删除带 `clawscale.openclaw=true` label 的 OpenClaw runtime 容器 |
+| `scripts/remote-clean-data.sh` | 完整清理：停止服务、删除 Postgres volume、删除 OpenClaw runtime 容器和 `data/openclaw` |
+| `scripts/remote-deploy.sh` | 服务器拉取 `origin/dev`，重置到最新代码并 `docker compose up -d --build` |
+| `scripts/remote-status.sh` | 查看 compose 状态、app 日志、核心表计数和 OpenClaw runtime 容器 |
+| `scripts/push-clean-redeploy.sh` | 聚合脚本：推送、清理数据、重新部署、检查状态 |
+
+可覆盖目标环境：
+
+```bash
+DEPLOY_HOST=43.128.225.9 \
+DEPLOY_USER=ubuntu \
+DEPLOY_DIR=/root/ClawScale \
+DEPLOY_BRANCH=dev \
+SSHPASS='your-ssh-password' \
+scripts/push-clean-redeploy.sh
+```
+
 ## 许可证
 
 MIT

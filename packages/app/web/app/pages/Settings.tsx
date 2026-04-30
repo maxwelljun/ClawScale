@@ -84,7 +84,7 @@ export default function Settings() {
       setTenant(res.data); setSuccess(true);
       storeTenant(res.data);
       const s = res.data.settings as TenantSettings;
-      document.title = s.siteTitle || `${res.data.name} — ClawScale`;
+      document.title = s.siteTitle || `${res.data.name} — ClawBot`;
       const favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
       if (favicon) favicon.href = s.logoUrl || '/logo.png';
       setTimeout(() => setSuccess(false), 3000);
@@ -116,7 +116,7 @@ export default function Settings() {
             </div>
             <div>
               <label className="label">Browser tab title</label>
-              <input className="input" value={siteTitle} onChange={(e) => setSiteTitle(e.target.value)} disabled={!isAdmin} placeholder={`${name || 'Project'} — ClawScale`} />
+              <input className="input" value={siteTitle} onChange={(e) => setSiteTitle(e.target.value)} disabled={!isAdmin} placeholder={`${name || 'Project'} — ClawBot`} />
               <p className="text-xs text-gray-400 mt-1">Custom title for the browser tab. Leave blank to use the default.</p>
             </div>
             <div>
@@ -146,13 +146,13 @@ export default function Settings() {
         </div>
 
         <div className="card p-6">
-          <h2 className="font-semibold text-gray-900 mb-1">ClawScale Setup Assistant</h2>
+          <h2 className="font-semibold text-gray-900 mb-1">ClawBot Setup Assistant</h2>
           <p className="text-sm text-gray-500 mb-4">Configure the built-in AI assistant that helps end-users navigate your bot.</p>
           <div className="space-y-4">
             <label className="flex items-start gap-3 cursor-pointer">
               <input type="checkbox" checked={clawscaleEnabled} onChange={(e) => setClawscaleEnabled(e.target.checked)} disabled={!isAdmin} className="mt-0.5" />
               <span>
-                <span className="text-sm font-medium text-gray-900">Enable ClawScale assistant</span>
+                <span className="text-sm font-medium text-gray-900">Enable ClawBot assistant</span>
                 <span className="text-xs text-gray-500 block">When disabled, the AI assistant will not respond to any messages or commands. System commands like /team and /backends still work.</span>
               </span>
             </label>

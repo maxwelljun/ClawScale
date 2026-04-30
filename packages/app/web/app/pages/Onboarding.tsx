@@ -128,7 +128,7 @@ export default function OnboardingPage() {
             <div>
               <label className="label">Logo URL</label>
               <input className="input" placeholder="https://example.com/logo.png" value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} disabled={!isAdmin} />
-              <p className="text-xs text-gray-400 mt-1">Leave empty to use the ClawScale logo.</p>
+              <p className="text-xs text-gray-400 mt-1">Leave empty to use the ClawBot logo.</p>
             </div>
             <div>
               <label className="label">Accent color</label>

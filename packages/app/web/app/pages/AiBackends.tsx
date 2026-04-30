@@ -182,7 +182,7 @@ export default function AiBackendsPage() {
       <div>
         <h1 className="text-2xl font-semibold text-gray-900">AI Backends</h1>
         <p className="text-gray-500 mt-1">
-          ClawScale greets users and routes them to a backend. Configure the orchestrator below,
+          ClawBot greets users and routes them to a backend. Configure the orchestrator below,
           then add the AI backends users can choose from.
         </p>
       </div>
@@ -193,9 +193,9 @@ export default function AiBackendsPage() {
         </div>
       )}
 
-      {/* ── ClawScale Orchestrator ───────────────────────────────────────────── */}
+      {/* ── ClawBot Orchestrator ─────────────────────────────────────────────── */}
       <section>
-        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">ClawScale Orchestrator</h2>
+        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">ClawBot Orchestrator</h2>
         <div className="card px-5 py-4">
           {!editingClawscale ? (
             <div className="flex items-start gap-4">
@@ -204,14 +204,14 @@ export default function AiBackendsPage() {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-medium text-gray-900">{clawscale.name || 'ClawScale Setup Assistant'}</span>
+                  <span className="font-medium text-gray-900">{clawscale.name || 'ClawBot Setup Assistant'}</span>
                   <span className="text-xs px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200 font-medium">Built-in</span>
                   {clawscale.isActive === false && (
                     <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">Disabled</span>
                   )}
                 </div>
                 <p className="text-sm text-gray-400 mt-0.5">
-                  Greets users, answers ClawScale questions, and routes to regular backends.
+                  Greets users, answers ClawBot questions, and routes to regular backends.
                 </p>
                 <div className="flex items-center gap-1 mt-2 text-xs text-gray-400">
                   <Lock className="h-3 w-3" />
@@ -276,7 +276,7 @@ export default function AiBackendsPage() {
               {isAdmin && (
                 <button
                   className="text-gray-400 hover:text-gray-700 transition-colors p-1 shrink-0"
-                  title="Edit ClawScale settings"
+                  title="Edit ClawBot settings"
                   onClick={() => { setClawscaleForm(clawscale); setEditingClawscale(true); setClawscaleError(''); }}
                 >
                   <Pencil className="h-4 w-4" />
@@ -286,7 +286,7 @@ export default function AiBackendsPage() {
           ) : (
             <form onSubmit={saveClawscale} className="space-y-4">
               <div className="flex items-center justify-between mb-1">
-                <h3 className="font-semibold text-gray-900">Edit ClawScale Orchestrator</h3>
+                <h3 className="font-semibold text-gray-900">Edit ClawBot Orchestrator</h3>
                 <button type="button" onClick={() => setEditingClawscale(false)} className="text-gray-400 hover:text-gray-600">
                   <X className="h-4 w-4" />
                 </button>
@@ -294,7 +294,7 @@ export default function AiBackendsPage() {
 
               <div>
                 <label className="label">Display name</label>
-                <input className="input" placeholder="ClawScale Setup Assistant" value={clawscaleForm.name ?? ''}
+                <input className="input" placeholder="ClawBot Setup Assistant" value={clawscaleForm.name ?? ''}
                   onChange={(e) => setClawscaleForm((f) => ({ ...f, name: e.target.value }))} />
               </div>
 
@@ -480,7 +480,7 @@ export default function AiBackendsPage() {
             <BotMessageSquare className="h-9 w-9 text-gray-300 mb-3" />
             <p className="text-gray-500 font-medium">No AI backends yet</p>
             <p className="text-sm text-gray-400 mt-1">
-              Without a backend, ClawScale will present a menu — but there's nothing to choose from.
+              Without a backend, ClawBot will present a menu — but there's nothing to choose from.
             </p>
             {isAdmin && (
               <button className="btn-primary mt-4" onClick={openCreate}>

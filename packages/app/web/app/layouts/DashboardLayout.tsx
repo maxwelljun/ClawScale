@@ -29,7 +29,7 @@ export default function DashboardLayout() {
       const t = getTenant();
       if (t) {
         const s = t.settings as TenantSettings | undefined;
-        document.title = s?.siteTitle || `${t.name} — ClawScale`;
+        document.title = s?.siteTitle || `${t.name} — ClawBot`;
         const favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
         if (favicon) favicon.href = s?.logoUrl || '/logo.png';
       }
@@ -52,9 +52,9 @@ export default function DashboardLayout() {
     <div className="flex h-screen bg-gray-50">
       <aside className="flex w-60 flex-col bg-navy-900 text-white">
         <Link to="/" className="flex items-center gap-2.5 px-5 py-5 border-b border-white/10">
-          <img src={projectLogo} alt="ClawScale" width={28} height={28} className="h-7 w-7 rounded object-cover" />
+          <img src={projectLogo} alt="ClawBot" width={28} height={28} className="h-7 w-7 rounded object-cover" />
           <div>
-            <span className="font-semibold text-white text-base">ClawScale</span>
+            <span className="font-semibold text-white text-base">ClawBot</span>
             <p className="text-[10px] text-white/40 leading-none mt-0.5">by ClayPulse</p>
           </div>
         </Link>

@@ -177,7 +177,7 @@ export const BACKEND_TYPE_DESCRIPTORS: Record<AiBackendType, BackendTypeDescript
     transport: 'http',
     responseFormat: 'json-auto',
     fields: [
-      { key: 'baseUrl', label: 'Base URL', hint: 'Optional fallback. By default ClawScale starts an isolated Docker runtime per end-user.' },
+      { key: 'baseUrl', label: 'Base URL', hint: 'Optional fallback. By default ClawBot starts an isolated Docker runtime per end-user.' },
       { key: 'apiKey', label: 'API Key', inputType: 'password' },
       { key: 'model', label: 'Model' },
     ],

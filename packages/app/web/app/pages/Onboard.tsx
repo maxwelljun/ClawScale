@@ -449,7 +449,7 @@ export default function OnboardPage() {
           className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-500 transition-colors"
         >
           Powered by
-          <span className="font-semibold" style={{ color: accent }}>ClawScale</span>
+          <span className="font-semibold" style={{ color: accent }}>ClawBot</span>
         </a>
       </footer>
     </div>

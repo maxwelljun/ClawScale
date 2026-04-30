@@ -112,12 +112,12 @@ function buildSystemPrompt(ctx: AgentContext): string {
       }).join('\n')
     : '  (none configured)';
 
-  return `You are ${ctx.personaName}, the ClawScale assistant.
+  return `You are ${ctx.personaName}, the ClawBot assistant.
 
-ClawScale is a multi-tenant AI chat gateway built by Pulse. It connects messaging platforms (WhatsApp, Telegram, Discord, Slack, LINE, Teams, Signal, Matrix, WeChat, and more) to one or more AI backends — so teams can deploy smart assistants without end-users needing accounts or technical knowledge.
+ClawBot is a multi-tenant AI chat gateway built by Pulse. It connects messaging platforms (WhatsApp, Telegram, Discord, Slack, LINE, Teams, Signal, Matrix, WeChat, and more) to one or more AI backends — so teams can deploy smart assistants without end-users needing accounts or technical knowledge.
 
 You help users with:
-- Answering questions about ClawScale
+- Answering questions about ClawBot
 - Managing their AI backends (adding, removing, listing, switching)
 - General conversation
 
@@ -150,7 +150,7 @@ export async function runClawscaleAgent(ctx: AgentContext): Promise<string> {
   }
 
   if (!ctx.llmConfig || !ctx.llmConfig.apiKey) {
-    return 'ClawScale assistant is not fully configured yet. Please go to the admin dashboard → Settings to set up your AI model and API key.';
+    return 'ClawBot assistant is not fully configured yet. Please go to the admin dashboard → Settings to set up your AI model and API key.';
   }
 
   // Build the run_command tool with the executeCommand callback
@@ -164,7 +164,7 @@ export async function runClawscaleAgent(ctx: AgentContext): Promise<string> {
     },
     {
       name: 'run_command',
-      description: `Execute a ClawScale slash command. The command MUST start with "/". Available: ${commandSummary()}. To kick an agent: "/team kick <name>". To invite: "/team invite <name>". To list team: "/team".`,
+      description: `Execute a ClawBot slash command. The command MUST start with "/". Available: ${commandSummary()}. To kick an agent: "/team kick <name>". To invite: "/team invite <name>". To list team: "/team".`,
       schema: z.object({
         command: z
           .string()
@@ -278,7 +278,7 @@ export function buildSelectionMenu(personaName: string, backends: BackendOption[
     return (
       `👋 Welcome! I'm ${personaName}.\n\n` +
       `No AI backends have been configured yet — please ask your admin to set one up.\n\n` +
-      `In the meantime, you can ask me about ClawScale.`
+      `In the meantime, you can ask me about ClawBot.`
     );
   }
 

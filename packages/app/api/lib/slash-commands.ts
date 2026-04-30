@@ -111,12 +111,12 @@ export function formatCommandHelp(): string {
     `*Commands:*\n\n${cmds}\n\n` +
     `*Routing:*\n` +
     `When you have an active backend, \`/command\` is sent to the backend.\n` +
-    `To run a ClawScale command, prefix with \`>\`:\n` +
-    `\`> /clear\` — run ClawScale's /clear\n` +
+    `To run a ClawBot command, prefix with \`>\`:\n` +
+    `\`> /clear\` — run ClawBot's /clear\n` +
     `\`clawscale> /clear\` — same, explicit\n\n` +
     `*Direct message:*\n` +
     `\`agent name> message\` — send a message to a specific agent\n` +
-    `\`> message\` — talk to ClawScale directly`
+    `\`> message\` — talk to ClawBot directly`
   );
 }
 

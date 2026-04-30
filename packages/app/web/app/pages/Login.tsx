@@ -33,8 +33,8 @@ export default function Login() {
     <div className="flex min-h-screen items-center justify-center bg-navy-950 px-4">
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-2.5 mb-8">
-          <img src={logoUrl} alt="ClawScale" width={32} height={32} className="h-8 w-8 rounded object-cover" />
-          <span className="text-2xl font-semibold text-white">ClawScale</span>
+          <img src={logoUrl} alt="ClawBot" width={32} height={32} className="h-8 w-8 rounded object-cover" />
+          <span className="text-2xl font-semibold text-white">ClawBot</span>
         </div>
 
         <div className="card p-8">

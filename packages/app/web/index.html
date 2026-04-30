@@ -4,12 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" href="/logo.png" />
-    <title>ClawScale</title>
+    <title>ClawBot</title>
     <script>
       try {
         var t = JSON.parse(localStorage.getItem('cs_tenant') || '');
         if (t) {
-          document.title = t.settings && t.settings.siteTitle || t.name + ' \u2014 ClawScale';
+          document.title = t.settings && t.settings.siteTitle || t.name + ' \u2014 ClawBot';
           if (t.settings && t.settings.logoUrl) document.querySelector('link[rel="icon"]').href = t.settings.logoUrl;
         }
       } catch (e) {}

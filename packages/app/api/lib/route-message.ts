@@ -156,7 +156,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
 
   // 7. Load backends and ClawScale config
   const clawscaleCfg = settings.clawscale ?? {};
-  const clawscaleName = clawscaleCfg.name ?? 'ClawScale Setup Assistant';
+  const clawscaleName = clawscaleCfg.name ?? 'ClawBot Setup Assistant';
   const clawscaleStyle = clawscaleCfg.answerStyle;
   const clawscaleActive = clawscaleCfg.isActive !== false;
   const clawscaleLlm = clawscaleCfg.llm ?? { model: 'openai:gpt-5.4-mini' };
@@ -207,8 +207,8 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     if (attachments?.length && !clawscaleLlm?.multimodal) {
       return reply(
         `I received your ${attachments.length > 1 ? 'files' : 'file'}, but I can't process non-text content yet.\n\n` +
-        'Ask your admin to enable **multimodal input** in the ClawScale dashboard:\n' +
-        '**Settings → ClawScale Setup Assistant → Enable multimodal input**',
+        'Ask your admin to enable **multimodal input** in the ClawBot dashboard:\n' +
+        '**Settings → ClawBot Setup Assistant → Enable multimodal input**',
       );
     }
 
@@ -371,7 +371,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
             // /team with no subcommand — show team
             const agents: string[] = [];
             if (clawscaleActive) {
-              agents.push(`• *${clawscaleName}* — ClawScale assistant`);
+              agents.push(`• *${clawscaleName}* — ClawBot assistant`);
             }
             for (const b of allBackends) {
               if (activeBackendIds.includes(b.id)) {
@@ -612,7 +612,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
 
       if (resolved.type === 'clawscale') {
         if (!clawscaleActive) {
-          return reply('ClawScale assistant is currently disabled.');
+          return reply('ClawBot assistant is currently disabled.');
         }
         // Check if the message is a system command (e.g. "> /clear")
         const innerCmd = parseCommand(cmd.message);

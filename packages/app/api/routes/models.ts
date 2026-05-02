@@ -80,6 +80,12 @@ function anthropicUrl(baseUrl: string, path: string): string {
   return baseUrl.endsWith('/v1') ? `${baseUrl}${path}` : `${baseUrl}/v1${path}`;
 }
 
+function anthropicModelId(model: string): string {
+  const value = model.trim().replace(/^\/+|\/+$/g, '');
+  const slashIndex = value.indexOf('/');
+  return slashIndex > 0 && slashIndex < value.length - 1 ? value.slice(slashIndex + 1) : value;
+}
+
 async function fetchModelIds(row: { provider: string; baseUrl?: string | null; apiKey?: string | null; config?: unknown }): Promise<string[]> {
   const baseUrl = providerBaseUrl(row);
   if (!baseUrl) throw new Error('Base URL is required for this provider');
@@ -179,7 +185,7 @@ modelsRouter.post('/:id/run', requireAdmin, validate(runSchema), async (req, res
       const response = await fetch(anthropicUrl(providerBaseUrl(row), '/messages'), {
         method: 'POST',
         headers: providerHeaders(row),
-        body: JSON.stringify({ model, max_tokens: 128, messages: [{ role: 'user', content: body.prompt }] }),
+        body: JSON.stringify({ model: anthropicModelId(model), max_tokens: 128, messages: [{ role: 'user', content: body.prompt }] }),
         signal: AbortSignal.timeout(60_000),
       });
       if (!response.ok) throw new Error(`${response.status} ${(await response.text()).slice(0, 300)}`);

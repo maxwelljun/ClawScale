@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { OPENCLAW_DEFAULT_WORKSPACE } from '../../shared/index.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -200,16 +201,18 @@ function defaultRuntimeConfig(identity: OpenClawRuntimeIdentity, template?: Open
     },
   };
 
-  const providerId = template?.modelProvider?.id || OPENCLAW_MODEL_PROVIDER_ID;
+  const configuredProviderId = template?.modelProvider?.id || OPENCLAW_MODEL_PROVIDER_ID;
   const providerBaseUrl = template?.modelProvider?.baseUrl || OPENCLAW_MODEL_PROVIDER_BASE_URL;
   const providerApiKey = template?.modelProvider?.apiKey || (OPENCLAW_MODEL_PROVIDER_API_KEY ? '${OPENCLAW_MODEL_PROVIDER_API_KEY}' : '');
   const providerApi = template?.modelProvider?.api || OPENCLAW_MODEL_PROVIDER_API;
-  const defaultModel = template?.modelProvider?.model || OPENCLAW_DEFAULT_MODEL;
-  if (!providerId || !providerBaseUrl || !defaultModel) {
+  const configuredModel = template?.modelProvider?.model || OPENCLAW_DEFAULT_MODEL;
+  if (!configuredProviderId || !providerBaseUrl || !configuredModel) {
     return config;
   }
+  const { providerId, modelId } = splitOpenClawModelRef(configuredProviderId, configuredModel, providerApi);
   return mergeObject(config, {
     models: {
+      mode: 'merge',
       providers: {
         [providerId]: {
           baseUrl: providerBaseUrl,
@@ -217,12 +220,18 @@ function defaultRuntimeConfig(identity: OpenClawRuntimeIdentity, template?: Open
           api: providerApi,
           models: [
             {
-              id: defaultModel,
-              name: defaultModel,
+              id: modelId,
+              name: modelId,
               reasoning: true,
-              input: ['text'],
-              contextWindow: 200000,
-              maxTokens: 8192,
+              input: ['text', 'image'],
+              contextWindow: 262144,
+              maxTokens: 32768,
+              cost: {
+                cacheRead: 0,
+                cacheWrite: 0,
+                input: 0,
+                output: 0,
+              },
             },
           ],
         },
@@ -231,10 +240,31 @@ function defaultRuntimeConfig(identity: OpenClawRuntimeIdentity, template?: Open
     agents: {
       defaults: {
         skipBootstrap: true,
-        model: { primary: `${providerId}/${defaultModel}` },
+        model: { primary: `${providerId}/${modelId}` },
       },
     },
   });
+}
+
+function splitOpenClawModelRef(configuredProviderId: string, configuredModel: string, providerApi: string): { providerId: string; modelId: string } {
+  const model = configuredModel.trim().replace(/^\/+|\/+$/g, '');
+  if (providerApi !== 'anthropic-messages') {
+    return {
+      providerId: configuredProviderId,
+      modelId: model,
+    };
+  }
+  const slashIndex = model.indexOf('/');
+  if (slashIndex > 0 && slashIndex < model.length - 1) {
+    return {
+      providerId: model.slice(0, slashIndex),
+      modelId: model.slice(slashIndex + 1),
+    };
+  }
+  return {
+    providerId: configuredProviderId,
+    modelId: model,
+  };
 }
 
 async function writeDefaultRuntimeConfig(stateDir: string, identity: OpenClawRuntimeIdentity, template?: OpenClawRuntimeTemplate): Promise<void> {
@@ -274,11 +304,12 @@ async function writeTemplateWorkspace(workspaceDir: string, template?: OpenClawR
   const managedPaths = new Set<string>();
   for (const file of workspaceFiles) {
     const safePath = safeRelativePath(file.path);
-    managedPaths.add(safePath);
+    managedPaths.add(safePath.toLowerCase());
     const target = path.join(workspaceDir, safePath);
     await fs.mkdir(path.dirname(target), { recursive: true });
     await fs.writeFile(target, file.content);
   }
+  await writeMissingDefaultWorkspaceFiles(workspaceDir, managedPaths);
 
   const knowledge = template.knowledgeBase ?? [];
   if (knowledge.length > 0) {
@@ -308,17 +339,20 @@ async function writeTemplateWorkspace(workspaceDir: string, template?: OpenClawR
   await fs.writeFile(path.join(root, 'version.json'), `${JSON.stringify({ versionId: template.versionId ?? null, version: template.version ?? null }, null, 2)}\n`);
 }
 
-async function writeManagedMarkdown(workspaceDir: string, existing: Set<string>, file: string, content: string): Promise<void> {
-  if (existing.has(file)) return;
-  await fs.writeFile(path.join(workspaceDir, file), content);
-}
-
-function identityMarkdown(template: OpenClawRuntimeTemplate): string {
-  return `# Identity\n\nName: ${template.name ?? 'ClawBot Agent'}\n`;
-}
-
-function userMarkdown(): string {
-  return '# User\n\nThis file is managed per isolated runtime. Learn user preferences from conversation and runtime memory.\n';
+async function writeMissingDefaultWorkspaceFiles(workspaceDir: string, managedPaths: Set<string>): Promise<void> {
+  for (const file of OPENCLAW_DEFAULT_WORKSPACE) {
+    const safePath = safeRelativePath(file.path);
+    if (managedPaths.has(safePath.toLowerCase())) continue;
+    const target = path.join(workspaceDir, safePath);
+    try {
+      await fs.access(target);
+      continue;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.writeFile(target, file.content);
+  }
 }
 
 function customWorkspaceFiles(template: OpenClawRuntimeTemplate): Array<{ path: string; content: string }> {

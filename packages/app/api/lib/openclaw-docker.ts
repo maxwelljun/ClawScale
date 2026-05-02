@@ -198,7 +198,6 @@ function defaultRuntimeConfig(identity: OpenClawRuntimeIdentity, template?: Open
     agents: {
       defaults: {
         skipBootstrap: true,
-        ...(template?.skills?.length ? { skills: template.skills.filter((skill) => skill.enabled !== false).map((skill) => skill.name) } : {}),
       },
     },
   };
@@ -256,6 +255,7 @@ async function writeDefaultRuntimeConfig(stateDir: string, identity: OpenClawRun
 
   if (isObject(existing.agents) && isObject(existing.agents.defaults)) {
     delete existing.agents.defaults.contextInjection;
+    delete existing.agents.defaults.skills;
   }
 
   await fs.writeFile(configPath, `${JSON.stringify(mergeObject(existing, patch), null, 2)}\n`);

@@ -224,8 +224,6 @@ function defaultRuntimeConfig(identity: OpenClawRuntimeIdentity, template?: Open
   if (!providerId || !providerBaseUrl || !defaultModel) {
     return config;
   }
-  const prompt = openClawRuntimeSystemPrompt(template);
-
   return mergeObject(config, {
     models: {
       providers: {
@@ -250,7 +248,6 @@ function defaultRuntimeConfig(identity: OpenClawRuntimeIdentity, template?: Open
       defaults: {
         skipBootstrap: true,
         model: { primary: `${providerId}/${defaultModel}` },
-        ...(prompt ? { systemPrompt: prompt, instructions: prompt } : {}),
       },
     },
   });
@@ -271,6 +268,8 @@ async function writeDefaultRuntimeConfig(stateDir: string, identity: OpenClawRun
   if (isObject(existing.agents) && isObject(existing.agents.defaults)) {
     delete existing.agents.defaults.contextInjection;
     delete existing.agents.defaults.skills;
+    delete existing.agents.defaults.systemPrompt;
+    delete existing.agents.defaults.instructions;
   }
 
   await fs.writeFile(configPath, `${JSON.stringify(mergeObject(existing, patch), null, 2)}\n`);

@@ -87,7 +87,14 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
   // 1. Resolve channel + tenant
   const channel = await db.channel.findUnique({
     where: { id: channelId },
-    select: { id: true, tenantId: true, status: true, agentTemplateId: true },
+    select: {
+      id: true,
+      tenantId: true,
+      status: true,
+      agentTemplateId: true,
+      agentTemplateVersionId: true,
+      agentTemplateVersion: true,
+    },
   });
   if (!channel || channel.status !== 'connected') return null;
   const { tenantId } = channel;
@@ -171,7 +178,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     || (labelPolicy === 'hide' && userHideLabels !== false)
     || (labelPolicy === 'show' && userHideLabels === true);
 
-  const allBackends = await db.aiBackend.findMany({
+  let allBackends = await db.aiBackend.findMany({
     where: {
       tenantId,
       isActive: true,
@@ -182,6 +189,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     },
     orderBy: { createdAt: 'asc' },
   });
+  allBackends = await Promise.all(allBackends.map((backend) => applyAgentTemplateVersion(backend, channel.agentTemplateVersion)));
   if (channel.agentTemplateId && allBackends[0] && !activeBackendIds.includes(channel.agentTemplateId)) {
     await db.endUserBackend.upsert({
       where: { endUserId_backendId: { endUserId: endUser.id, backendId: channel.agentTemplateId } },
@@ -195,11 +203,13 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
       where: { id: conversation.id },
       data: {
         backendId: allBackends[0].id,
+        agentTemplateVersionId: channel.agentTemplateVersionId ?? null,
         modelProviderId: allBackends[0].modelProviderId ?? null,
         metadata: {
           ...((conversation.metadata ?? {}) as Record<string, unknown>),
           routingMode: 'channel-agent-template',
           agentTemplateId: allBackends[0].id,
+          agentTemplateVersionId: channel.agentTemplateVersionId ?? null,
           modelProviderId: allBackends[0].modelProviderId ?? null,
         },
       },
@@ -217,7 +227,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     }
   }
   if (channel.agentTemplateId && allBackends[0]) {
-    console.log(`[route] channel=${channelId} agent=${allBackends[0].name} (${allBackends[0].id}) modelProvider=${allBackends[0].modelProvider?.name ?? 'none'} model=${((allBackends[0].config ?? {}) as AiBackendProviderConfig).model ?? readFirstModel(allBackends[0].modelProvider?.models) ?? 'default'}`);
+    console.log(`[route] channel=${channelId} agent=${allBackends[0].name} (${allBackends[0].id}) version=${channel.agentTemplateVersion?.version ?? 'draft'} modelProvider=${allBackends[0].modelProvider?.name ?? 'none'} model=${((allBackends[0].config ?? {}) as AiBackendProviderConfig).model ?? readFirstModel(allBackends[0].modelProvider?.models) ?? 'default'}`);
   }
 
   const replies: ReplyEntry[] = [];
@@ -848,6 +858,51 @@ function readFirstModel(value: unknown): string | undefined {
 
 function readJsonArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? value as T[] : [];
+}
+
+async function applyAgentTemplateVersion<T extends {
+  id: string;
+  name: string;
+  type: string;
+  runtimeType?: string | null;
+  modelProviderId?: string | null;
+  modelProvider?: {
+    id: string;
+    name: string;
+    provider: string;
+    baseUrl: string | null;
+    apiKey: string | null;
+    models: unknown;
+  } | null;
+  config: unknown;
+  skills?: unknown;
+  workspace?: unknown;
+  knowledgeBase?: unknown;
+}>(
+  backend: T,
+  version: { agentTemplateId: string; snapshot: unknown } | null,
+): Promise<T> {
+  if (!version || version.agentTemplateId !== backend.id || !version.snapshot || typeof version.snapshot !== 'object') {
+    return backend;
+  }
+  const snapshot = version.snapshot as Record<string, unknown>;
+  const modelProviderId = typeof snapshot.modelProviderId === 'string' ? snapshot.modelProviderId : backend.modelProviderId;
+  const modelProvider = modelProviderId && modelProviderId !== backend.modelProviderId
+    ? await db.modelProvider.findUnique({ where: { id: modelProviderId } })
+    : backend.modelProvider;
+
+  return {
+    ...backend,
+    name: typeof snapshot.name === 'string' ? snapshot.name : backend.name,
+    type: typeof snapshot.type === 'string' ? snapshot.type : backend.type,
+    runtimeType: typeof snapshot.runtimeType === 'string' ? snapshot.runtimeType : backend.runtimeType,
+    modelProviderId,
+    modelProvider,
+    config: snapshot.config ?? backend.config,
+    skills: snapshot.skills ?? backend.skills,
+    workspace: snapshot.workspace ?? backend.workspace,
+    knowledgeBase: snapshot.knowledgeBase ?? backend.knowledgeBase,
+  };
 }
 
 function buildOpenClawTemplate(backend: {

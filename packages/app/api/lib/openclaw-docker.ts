@@ -31,6 +31,8 @@ export interface OpenClawDockerRuntime {
 
 export interface OpenClawRuntimeTemplate {
   name?: string;
+  versionId?: string | null;
+  version?: number | null;
   modelProvider?: {
     id: string;
     provider: string;
@@ -196,6 +198,7 @@ function defaultRuntimeConfig(identity: OpenClawRuntimeIdentity, template?: Open
     agents: {
       defaults: {
         skipBootstrap: true,
+        ...(template?.skills?.length ? { skills: template.skills.filter((skill) => skill.enabled !== false).map((skill) => skill.name) } : {}),
       },
     },
   };
@@ -266,21 +269,35 @@ function safeRelativePath(value: string): string {
 
 async function writeTemplateWorkspace(workspaceDir: string, template?: OpenClawRuntimeTemplate): Promise<void> {
   if (!template) return;
-  const root = path.join(workspaceDir, '.clawbot-template');
+  const root = path.join(workspaceDir, '.clawbot');
   await fs.mkdir(root, { recursive: true });
 
   const workspaceFiles = template.workspace ?? [];
+  const managedPaths = new Set<string>();
   for (const file of workspaceFiles) {
-    const target = path.join(workspaceDir, safeRelativePath(file.path));
+    const safePath = safeRelativePath(file.path);
+    managedPaths.add(safePath);
+    const target = path.join(workspaceDir, safePath);
     await fs.mkdir(path.dirname(target), { recursive: true });
     await fs.writeFile(target, file.content);
   }
+
+  await writeManagedMarkdown(workspaceDir, managedPaths, 'IDENTITY.md', identityMarkdown(template));
+  await writeManagedMarkdown(workspaceDir, managedPaths, 'SOUL.md', soulMarkdown(template));
+  await writeManagedMarkdown(workspaceDir, managedPaths, 'AGENTS.md', agentsMarkdown(template));
+  await writeManagedMarkdown(workspaceDir, managedPaths, 'TOOLS.md', toolsMarkdown(template));
+  await writeManagedMarkdown(workspaceDir, managedPaths, 'USER.md', userMarkdown());
 
   const skills = (template.skills ?? []).filter((skill) => skill.enabled !== false);
   if (skills.length > 0) {
     await fs.writeFile(path.join(root, 'skills.md'), skills.map((skill) =>
       `- ${skill.name}${skill.description ? `: ${skill.description}` : ''}`,
     ).join('\n') + '\n');
+    for (const skill of skills) {
+      const skillDir = path.join(workspaceDir, 'skills', safeRelativePath(skill.name));
+      await fs.mkdir(skillDir, { recursive: true });
+      await fs.writeFile(path.join(skillDir, 'SKILL.md'), skillMarkdown(skill));
+    }
   }
 
   const knowledge = template.knowledgeBase ?? [];
@@ -288,10 +305,16 @@ async function writeTemplateWorkspace(workspaceDir: string, template?: OpenClawR
     await fs.writeFile(path.join(root, 'knowledge.md'), knowledge.map((item) =>
       `# ${item.title}\n\n${item.content}`,
     ).join('\n\n---\n\n') + '\n');
+    await fs.mkdir(path.join(workspaceDir, 'docs'), { recursive: true });
+    await fs.writeFile(path.join(workspaceDir, 'docs', 'knowledge.md'), knowledge.map((item) =>
+      `# ${item.title}\n\n${item.content}`,
+    ).join('\n\n---\n\n') + '\n');
   }
 
   const manifest = {
     name: template.name,
+    versionId: template.versionId,
+    version: template.version,
     modelProvider: template.modelProvider ? {
       id: template.modelProvider.id,
       provider: template.modelProvider.provider,
@@ -303,6 +326,38 @@ async function writeTemplateWorkspace(workspaceDir: string, template?: OpenClawR
     knowledgeItems: knowledge.map((item) => item.title),
   };
   await fs.writeFile(path.join(root, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+  await fs.writeFile(path.join(root, 'version.json'), `${JSON.stringify({ versionId: template.versionId ?? null, version: template.version ?? null }, null, 2)}\n`);
+}
+
+async function writeManagedMarkdown(workspaceDir: string, existing: Set<string>, file: string, content: string): Promise<void> {
+  if (existing.has(file)) return;
+  await fs.writeFile(path.join(workspaceDir, file), content);
+}
+
+function identityMarkdown(template: OpenClawRuntimeTemplate): string {
+  return `# Identity\n\nName: ${template.name ?? 'ClawBot Agent'}\n`;
+}
+
+function soulMarkdown(template: OpenClawRuntimeTemplate): string {
+  return `# Soul\n\n${template.systemPrompt?.trim() || 'Follow the channel agent template instructions and respond helpfully.'}\n`;
+}
+
+function agentsMarkdown(template: OpenClawRuntimeTemplate): string {
+  const model = template.modelProvider?.model ? `\nDefault model: ${template.modelProvider.model}` : '';
+  return `# Agent Operating Instructions\n\nYou are running inside an isolated ClawBot-managed OpenClaw runtime.${model}\n\nUse this workspace as the source of truth for this user, channel, and agent instance. Preserve user memory and session state inside this runtime.\n`;
+}
+
+function toolsMarkdown(template: OpenClawRuntimeTemplate): string {
+  const skills = (template.skills ?? []).filter((skill) => skill.enabled !== false).map((skill) => `- ${skill.name}${skill.description ? `: ${skill.description}` : ''}`);
+  return `# Tools\n\n${skills.length > 0 ? skills.join('\n') : 'Use only the tools enabled by the runtime configuration.'}\n`;
+}
+
+function userMarkdown(): string {
+  return '# User\n\nThis file is managed per isolated runtime. Learn user preferences from conversation and runtime memory.\n';
+}
+
+function skillMarkdown(skill: { name: string; description?: string }): string {
+  return `# ${skill.name}\n\n${skill.description || `Use the ${skill.name} capability when it is relevant to the user's request.`}\n`;
 }
 
 async function inspectContainer(name: string): Promise<DockerInspect | null> {

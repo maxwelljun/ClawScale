@@ -66,6 +66,7 @@ model Tenant {
   auditLogs     AuditLog[]
   aiBackends    AiBackend[]
   modelProviders ModelProvider[]
+  agentTemplateVersions AgentTemplateVersion[]
 
   @@map("tenants")
 }
@@ -112,6 +113,7 @@ model Channel {
   id        String        @id
   tenantId  String        @map("tenant_id")
   agentTemplateId String? @map("agent_template_id")
+  agentTemplateVersionId String? @map("agent_template_version_id")
   type      ChannelType
   name      String
   status    ChannelStatus @default(disconnected)
@@ -121,11 +123,13 @@ model Channel {
 
   tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   agentTemplate AiBackend?     @relation("ChannelAgentTemplate", fields: [agentTemplateId], references: [id], onDelete: SetNull)
+  agentTemplateVersion AgentTemplateVersion? @relation("ChannelAgentTemplateVersion", fields: [agentTemplateVersionId], references: [id], onDelete: SetNull)
   conversations Conversation[]
   endUsers      EndUser[]
 
   @@index([tenantId])
   @@index([agentTemplateId])
+  @@index([agentTemplateVersionId])
   @@map("channels")
 }
 
@@ -181,6 +185,7 @@ model Conversation {
   channelId String   @map("channel_id")
   endUserId String   @map("end_user_id")
   backendId String?  @map("backend_id")
+  agentTemplateVersionId String? @map("agent_template_version_id")
   modelProviderId String? @map("model_provider_id")
   metadata  Json     @default("{}")
   createdAt DateTime @default(now()) @map("created_at")
@@ -189,11 +194,13 @@ model Conversation {
   channel  Channel    @relation(fields: [channelId], references: [id], onDelete: Cascade)
   endUser  EndUser    @relation(fields: [endUserId], references: [id], onDelete: Cascade)
   backend  AiBackend? @relation(fields: [backendId], references: [id], onDelete: SetNull)
+  agentTemplateVersion AgentTemplateVersion? @relation(fields: [agentTemplateVersionId], references: [id], onDelete: SetNull)
   modelProvider ModelProvider? @relation(fields: [modelProviderId], references: [id], onDelete: SetNull)
   messages Message[]
 
   @@index([tenantId])
   @@index([endUserId])
+  @@index([agentTemplateVersionId])
   @@map("conversations")
 }
 
@@ -262,6 +269,7 @@ model AiBackend {
   tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   modelProvider ModelProvider? @relation(fields: [modelProviderId], references: [id], onDelete: SetNull)
   channels      Channel[]      @relation("ChannelAgentTemplate")
+  versions      AgentTemplateVersion[]
   endUsers      EndUserBackend[]
   conversations Conversation[]
   messages      Message[]
@@ -269,6 +277,28 @@ model AiBackend {
   @@index([tenantId])
   @@index([modelProviderId])
   @@map("ai_backends")
+}
+
+model AgentTemplateVersion {
+  id        String   @id
+  tenantId  String   @map("tenant_id")
+  agentTemplateId String @map("agent_template_id")
+  version   Int
+  name      String
+  snapshot  Json
+  notes     String?
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  agentTemplate AiBackend @relation(fields: [agentTemplateId], references: [id], onDelete: Cascade)
+  channels      Channel[] @relation("ChannelAgentTemplateVersion")
+  conversations Conversation[]
+
+  @@unique([agentTemplateId, version])
+  @@index([tenantId])
+  @@index([agentTemplateId])
+  @@map("agent_template_versions")
 }
 
 model AuditLog {

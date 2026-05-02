@@ -8,6 +8,7 @@ import Dashboard from './pages/Dashboard';
 import Conversations from './pages/Conversations';
 import Channels from './pages/Channels';
 import Agents from './pages/Agents';
+import AgentTemplates from './pages/AgentTemplates';
 import Models from './pages/Models';
 import Users from './pages/Users';
 import EndUsers from './pages/EndUsers';
@@ -51,6 +52,7 @@ createRoot(document.getElementById('root')!).render(
           <Route path="conversations" element={<Conversations />} />
           <Route path="channels" element={<Channels />} />
           <Route path="agents" element={<Agents />} />
+          <Route path="agent-templates" element={<AgentTemplates />} />
           <Route path="ai-backends" element={<Navigate to="/agents" replace />} />
           <Route path="models" element={<Models />} />
           <Route path="end-users" element={<EndUsers />} />

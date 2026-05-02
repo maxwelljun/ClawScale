@@ -28,6 +28,7 @@ conversationsRouter.get('/', async (req, res) => {
         select: { id: true, name: true, type: true },
       },
       backend: { select: { id: true, name: true, runtimeType: true } },
+      agentTemplateVersion: { select: { id: true, version: true, name: true } },
       modelProvider: { select: { id: true, name: true, provider: true } },
       _count: { select: { messages: true } },
     },
@@ -51,6 +52,7 @@ conversationsRouter.get('/:id', async (req, res) => {
       endUser: true,
       channel: { select: { id: true, name: true, type: true } },
       backend: { select: { id: true, name: true, runtimeType: true } },
+      agentTemplateVersion: { select: { id: true, version: true, name: true } },
       modelProvider: { select: { id: true, name: true, provider: true } },
       messages: {
         orderBy: { createdAt: 'asc' },

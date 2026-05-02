@@ -4,7 +4,7 @@ import { api } from '@/lib/api';
 import { getUser } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import { CHANNEL_CONFIG_SCHEMA, type ChannelType, type Channel } from '@clawscale/shared';
-import type { ApiResponse } from '@clawscale/shared';
+import type { AgentTemplateVersion, ApiResponse } from '@clawscale/shared';
 
 const CHANNEL_ICONS: Record<string, string> = {
   whatsapp: '📱', whatsapp_business: '🟢', telegram: '✈️', slack: '💬', discord: '🎮', instagram: '📸',
@@ -17,7 +17,7 @@ const STATUS_BADGE: Record<string, string> = {
 };
 
 type ChannelRow = Omit<Channel, 'config'>;
-type AgentOption = { id: string; name: string; runtimeType?: string; isActive: boolean };
+type AgentOption = { id: string; name: string; runtimeType?: string; isActive: boolean; versions?: AgentTemplateVersion[] };
 
 export default function Channels() {
   const me = getUser();
@@ -30,6 +30,7 @@ export default function Channels() {
   const [addName, setAddName] = useState('');
   const [addConfig, setAddConfig] = useState<Record<string, string>>({});
   const [addAgentTemplateId, setAddAgentTemplateId] = useState('');
+  const [addAgentTemplateVersionId, setAddAgentTemplateVersionId] = useState('');
   const [addError, setAddError] = useState('');
   const [adding, setAdding] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -46,7 +47,14 @@ export default function Channels() {
       api.get<ApiResponse<AgentOption[]>>('/api/agents'),
     ]);
     if (res.ok) setChannels(res.data);
-    if (agentRes.ok) setAgents(agentRes.data);
+    if (agentRes.ok) {
+      const versionEntries = await Promise.all(agentRes.data.map(async (agent) => {
+        const versionRes = await api.get<ApiResponse<AgentTemplateVersion[]>>(`/api/agents/${agent.id}/versions`);
+        return [agent.id, versionRes.ok ? versionRes.data : []] as const;
+      }));
+      const versionsById = Object.fromEntries(versionEntries);
+      setAgents(agentRes.data.map((agent) => ({ ...agent, versions: versionsById[agent.id] ?? [] })));
+    }
     setLoading(false);
   }
 
@@ -83,12 +91,18 @@ export default function Channels() {
     setQrStatus(null);
   }
 
-  function resetAddForm() { setAddName(''); setAddConfig({}); setAddError(''); setAddType('whatsapp'); setAddAgentTemplateId(''); }
+  function resetAddForm() { setAddName(''); setAddConfig({}); setAddError(''); setAddType('whatsapp'); setAddAgentTemplateId(''); setAddAgentTemplateVersionId(''); }
+
+  function onAddAgentChange(agentId: string) {
+    const agent = agents.find((item) => item.id === agentId);
+    setAddAgentTemplateId(agentId);
+    setAddAgentTemplateVersionId(agent?.versions?.[0]?.id ?? '');
+  }
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault(); setAddError(''); setAdding(true);
     try {
-      const res = await api.post<ApiResponse<ChannelRow>>('/api/channels', { type: addType, name: addName, agentTemplateId: addAgentTemplateId || null, config: addConfig });
+      const res = await api.post<ApiResponse<ChannelRow>>('/api/channels', { type: addType, name: addName, agentTemplateId: addAgentTemplateId || null, agentTemplateVersionId: addAgentTemplateVersionId || null, config: addConfig });
       if (!res.ok) { setAddError(res.error); return; }
       setChannels((prev) => [...prev, res.data]);
       setShowAdd(false); resetAddForm();
@@ -145,6 +159,7 @@ export default function Channels() {
   const [editChannelName, setEditChannelName] = useState('');
   const [editChannelConfig, setEditChannelConfig] = useState<Record<string, string>>({});
   const [editAgentTemplateId, setEditAgentTemplateId] = useState('');
+  const [editAgentTemplateVersionId, setEditAgentTemplateVersionId] = useState('');
   const [editChannelError, setEditChannelError] = useState('');
   const [editChannelLoading, setEditChannelLoading] = useState(false);
   const [editChannelSaving, setEditChannelSaving] = useState(false);
@@ -154,6 +169,7 @@ export default function Channels() {
     setEditChannelType(ch.type as ChannelType);
     setEditChannelName(ch.name);
     setEditAgentTemplateId((ch as ChannelRow & { agentTemplateId?: string | null }).agentTemplateId ?? '');
+    setEditAgentTemplateVersionId((ch as ChannelRow & { agentTemplateVersionId?: string | null }).agentTemplateVersionId ?? '');
     setEditChannelConfig({});
     setEditChannelError('');
     setEditChannelLoading(true);
@@ -169,6 +185,12 @@ export default function Channels() {
     } finally { setEditChannelLoading(false); }
   }
 
+  function onEditAgentChange(agentId: string) {
+    const agent = agents.find((item) => item.id === agentId);
+    setEditAgentTemplateId(agentId);
+    setEditAgentTemplateVersionId(agent?.versions?.[0]?.id ?? '');
+  }
+
   function closeEditChannel() {
     setEditChannelId(null);
     setEditChannelError('');
@@ -182,6 +204,7 @@ export default function Channels() {
       const res = await api.patch<ApiResponse<Channel>>(`/api/channels/${editChannelId}`, {
         name: editChannelName,
         agentTemplateId: editAgentTemplateId || null,
+        agentTemplateVersionId: editAgentTemplateVersionId || null,
         config: editChannelConfig,
       });
       if (!res.ok) { setEditChannelError(res.error); return; }
@@ -225,13 +248,24 @@ export default function Channels() {
               </div>
               <div>
                 <label className="label">Agent template</label>
-                <select className="input" value={addAgentTemplateId} onChange={(e) => setAddAgentTemplateId(e.target.value)}>
+                <select className="input" value={addAgentTemplateId} onChange={(e) => onAddAgentChange(e.target.value)}>
                   <option value="">Use default routing</option>
                   {agents.filter((agent) => agent.isActive).map((agent) => (
                     <option key={agent.id} value={agent.id}>{agent.name}</option>
                   ))}
                 </select>
               </div>
+              {addAgentTemplateId && (
+                <div>
+                  <label className="label">Template version</label>
+                  <select className="input" value={addAgentTemplateVersionId} onChange={(e) => setAddAgentTemplateVersionId(e.target.value)}>
+                    <option value="">Draft / latest config</option>
+                    {agents.find((agent) => agent.id === addAgentTemplateId)?.versions?.map((version) => (
+                      <option key={version.id} value={version.id}>v{version.version} · {version.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               {(addType === 'whatsapp' || addType === 'wechat_personal') && (
                 <p className="text-sm text-gray-500 bg-gray-50 rounded-lg p-3">
                   After adding, click <strong>Connect</strong> to get a QR code to scan with your phone.
@@ -312,13 +346,24 @@ export default function Channels() {
                 </div>
                 <div>
                   <label className="label">Agent template</label>
-                  <select className="input" value={editAgentTemplateId} onChange={(e) => setEditAgentTemplateId(e.target.value)}>
+                  <select className="input" value={editAgentTemplateId} onChange={(e) => onEditAgentChange(e.target.value)}>
                     <option value="">Use default routing</option>
                     {agents.filter((agent) => agent.isActive).map((agent) => (
                       <option key={agent.id} value={agent.id}>{agent.name}</option>
                     ))}
                   </select>
                 </div>
+                {editAgentTemplateId && (
+                  <div>
+                    <label className="label">Template version</label>
+                    <select className="input" value={editAgentTemplateVersionId} onChange={(e) => setEditAgentTemplateVersionId(e.target.value)}>
+                      <option value="">Draft / latest config</option>
+                      {agents.find((agent) => agent.id === editAgentTemplateId)?.versions?.map((version) => (
+                        <option key={version.id} value={version.id}>v{version.version} · {version.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 {editSchema.fields.map((field) => (
                   <div key={field.key}>
                     <label className="label">{field.label}{field.required && <span className="text-red-500 ml-1">*</span>}</label>
@@ -382,6 +427,10 @@ export default function Channels() {
                       {ch.type === 'whatsapp_business' && (
                         <> · <WebhookToggle channelId={ch.id} apiBase={apiBase} /></>
                       )}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      {(ch as ChannelRow).agentTemplate?.name ?? 'Default routing'}
+                      {(ch as ChannelRow).agentTemplateVersion ? ` · v${(ch as ChannelRow).agentTemplateVersion?.version}` : ''}
                     </p>
                   </div>
                 </div>

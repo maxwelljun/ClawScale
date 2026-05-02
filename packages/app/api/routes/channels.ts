@@ -26,12 +26,14 @@ const createSchema = z.object({
   type: z.enum(CHANNEL_TYPES),
   name: z.string().min(1).max(80),
   agentTemplateId: z.string().nullable().optional(),
+  agentTemplateVersionId: z.string().nullable().optional(),
   config: z.record(z.unknown()).default({}),
 });
 
 const updateSchema = z.object({
   name: z.string().min(1).max(80).optional(),
   agentTemplateId: z.string().nullable().optional(),
+  agentTemplateVersionId: z.string().nullable().optional(),
   config: z.record(z.unknown()).optional(),
 });
 
@@ -42,7 +44,9 @@ const channelListSelect = {
   name: true,
   status: true,
   agentTemplateId: true,
+  agentTemplateVersionId: true,
   agentTemplate: { select: { id: true, name: true, runtimeType: true } },
+  agentTemplateVersion: { select: { id: true, version: true, name: true, agentTemplateId: true } },
   createdAt: true,
   updatedAt: true,
   // config intentionally omitted (contains secrets)
@@ -69,11 +73,13 @@ channelsRouter.post('/', requireAdmin, validate(createSchema), async (req, res) 
   const body = req.body;
 
   const id = generateId('ch');
+  const agentTemplateVersionId = await resolveChannelVersionId(tenantId, body.agentTemplateId || null, body.agentTemplateVersionId || null);
   await db.channel.create({
     data: {
       id,
       tenantId,
       agentTemplateId: body.agentTemplateId || null,
+      agentTemplateVersionId,
       type: body.type,
       name: body.name,
       config: body.config as any,
@@ -112,7 +118,15 @@ channelsRouter.patch('/:id', requireAdmin, validate(updateSchema), async (req, r
 
   if (!existing) { res.status(404).json({ ok: false, error: 'Channel not found' }); return; }
 
-  await db.channel.update({ where: { id }, data: body as any });
+  const data = { ...body } as Record<string, unknown>;
+  if ('agentTemplateId' in body || 'agentTemplateVersionId' in body) {
+    data.agentTemplateVersionId = await resolveChannelVersionId(
+      tenantId,
+      body.agentTemplateId === undefined ? null : body.agentTemplateId || null,
+      body.agentTemplateVersionId === undefined ? null : body.agentTemplateVersionId || null,
+    );
+  }
+  await db.channel.update({ where: { id }, data: data as any });
   await audit({ tenantId, memberId: userId, action: 'update_channel', resource: 'channel', resourceId: id });
 
   // Reload in-memory config for adapters that cache it
@@ -126,6 +140,28 @@ channelsRouter.patch('/:id', requireAdmin, validate(updateSchema), async (req, r
   const updated = await db.channel.findUnique({ where: { id }, select: channelListSelect });
   res.json({ ok: true, data: updated });
 });
+
+async function resolveChannelVersionId(
+  tenantId: string,
+  agentTemplateId: string | null,
+  requestedVersionId: string | null,
+): Promise<string | null> {
+  if (requestedVersionId) {
+    const version = await db.agentTemplateVersion.findFirst({
+      where: { id: requestedVersionId, tenantId, ...(agentTemplateId ? { agentTemplateId } : {}) },
+      select: { id: true },
+    });
+    if (!version) throw new Error('Agent template version not found');
+    return version.id;
+  }
+  if (!agentTemplateId) return null;
+  const latest = await db.agentTemplateVersion.findFirst({
+    where: { tenantId, agentTemplateId, isActive: true },
+    orderBy: { version: 'desc' },
+    select: { id: true },
+  });
+  return latest?.id ?? null;
+}
 
 // ── DELETE /api/channels/:id ─────────────────────────────────────────────────
 channelsRouter.delete('/:id', requireAdmin, async (req, res) => {

@@ -334,6 +334,18 @@ export interface AiBackend {
   updatedAt: string;
 }
 
+export interface AgentTemplateVersion {
+  id: string;
+  tenantId: string;
+  agentTemplateId: string;
+  version: number;
+  name: string;
+  snapshot: Record<string, unknown>;
+  notes?: string | null;
+  isActive: boolean;
+  createdAt: string;
+}
+
 export interface AgentSkill {
   name: string;
   description?: string;
@@ -418,6 +430,9 @@ export interface Channel {
   id: string;
   tenantId: string;
   agentTemplateId?: string | null;
+  agentTemplateVersionId?: string | null;
+  agentTemplate?: { id: string; name: string; runtimeType?: string | null } | null;
+  agentTemplateVersion?: { id: string; version: number; name: string; agentTemplateId: string } | null;
   type: ChannelType;
   name: string;
   status: ChannelStatus;
@@ -577,12 +592,14 @@ export interface Conversation {
   channelId: string;
   endUserId: string;
   backendId?: string | null;
+  agentTemplateVersionId?: string | null;
   modelProviderId?: string | null;
   createdAt: string;
   updatedAt: string;
   endUser?: Pick<EndUser, 'id' | 'externalId' | 'name' | 'email' | 'status'>;
   channel?: { id: string; name: string; type: string };
   backend?: { id: string; name: string; runtimeType?: string | null } | null;
+  agentTemplateVersion?: { id: string; version: number; name: string } | null;
   modelProvider?: { id: string; name: string; provider: string } | null;
   messages?: Message[];
   _count?: { messages: number };

@@ -1,276 +1,121 @@
 import { useEffect, useState } from 'react';
-import { BotMessageSquare, Loader2, Pencil, Plus, Save, Trash2, X } from 'lucide-react';
+import { BotMessageSquare, Loader2, Play, RotateCw, Square, RefreshCw } from 'lucide-react';
 import { api } from '@/lib/api';
-import { getUser } from '@/lib/auth';
-import type { AgentKnowledgeItem, AgentRuntimeType, AgentSkill, AgentWorkspaceFile, AiBackend, ApiResponse, ModelProvider } from '@clawscale/shared';
-import { AGENT_RUNTIME_DESCRIPTORS } from '@clawscale/shared';
+import type { ApiResponse } from '@clawscale/shared';
 
-type AgentRow = AiBackend & {
-  modelProvider?: { id: string; name: string; provider: string } | null;
-};
-type ModelRow = Omit<ModelProvider, 'apiKey'> & { apiKeySet?: boolean };
-
-type AgentForm = {
-  name: string;
-  runtimeType: AgentRuntimeType;
-  modelProviderId: string;
-  model: string;
-  systemPrompt: string;
-  skillsText: string;
-  workspaceText: string;
-  knowledgeText: string;
-  isActive: boolean;
-  isDefault: boolean;
+type AgentInstance = {
+  id: string;
+  channel: { id: string; name: string; type: string };
+  endUser: { id: string; externalId: string; name: string | null; email: string | null };
+  backend: { id: string; name: string; runtimeType?: string | null; type: string } | null;
+  modelProvider: { id: string; name: string; provider: string } | null;
+  agentTemplateVersion: { id: string; version: number; name: string } | null;
+  conversationId: string;
+  containerName: string;
+  runtime: { status: string; running: boolean; health?: string | null } | null;
+  stateDir: string;
+  workspaceDir: string;
+  lastMessageAt: string;
+  lastLatencyMs: number | null;
 };
 
-const emptyForm: AgentForm = {
-  name: '',
-  runtimeType: 'openclaw',
-  modelProviderId: '',
-  model: '',
-  systemPrompt: '',
-  skillsText: 'browser\nmemory\nfiles',
-  workspaceText: '# README.md\nAgent workspace notes go here.',
-  knowledgeText: '',
-  isActive: true,
-  isDefault: false,
+const statusClass: Record<string, string> = {
+  running: 'badge-green',
+  exited: 'badge-gray',
+  restarting: 'badge-yellow',
+  dead: 'badge-red',
+  missing: 'badge-gray',
 };
-
-function parseSkills(text: string): AgentSkill[] {
-  return text.split('\n').map((line) => line.trim()).filter(Boolean).map((name) => ({ name, enabled: true }));
-}
-
-function parseWorkspace(text: string): AgentWorkspaceFile[] {
-  if (!text.trim()) return [];
-  return [{ path: 'README.md', content: text.trim() }];
-}
-
-function parseKnowledge(text: string): AgentKnowledgeItem[] {
-  return text.split('\n\n').map((block, index) => block.trim()).filter(Boolean).map((content, index) => ({
-    title: `Knowledge ${index + 1}`,
-    content,
-  }));
-}
-
-function stringifySkills(skills: AgentSkill[] | undefined): string {
-  return (skills ?? []).map((skill) => skill.name).join('\n');
-}
-
-function stringifyWorkspace(workspace: AgentWorkspaceFile[] | undefined): string {
-  return workspace?.[0]?.content ?? '';
-}
-
-function stringifyKnowledge(items: AgentKnowledgeItem[] | undefined): string {
-  return (items ?? []).map((item) => item.content).join('\n\n');
-}
 
 export default function Agents() {
-  const isAdmin = getUser()?.role === 'admin';
-  const [agents, setAgents] = useState<AgentRow[]>([]);
-  const [models, setModels] = useState<ModelRow[]>([]);
+  const [rows, setRows] = useState<AgentInstance[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState<AgentForm>(emptyForm);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+  const [actionId, setActionId] = useState<string | null>(null);
 
   async function load() {
-    const [agentRes, modelRes] = await Promise.all([
-      api.get<ApiResponse<AgentRow[]>>('/api/agents'),
-      api.get<ApiResponse<ModelRow[]>>('/api/models'),
-    ]);
-    if (agentRes.ok) setAgents(agentRes.data);
-    if (modelRes.ok) setModels(modelRes.data);
+    setLoading(true);
+    const res = await api.get<ApiResponse<AgentInstance[]>>('/api/agent-instances');
+    if (res.ok) setRows(res.data);
     setLoading(false);
   }
 
   useEffect(() => { void load(); }, []);
 
-  function openCreate() {
-    setEditingId(null);
-    setForm({ ...emptyForm, modelProviderId: models[0]?.id ?? '', model: models[0]?.models?.[0] ?? '' });
-    setError('');
-    setShowForm(true);
-  }
-
-  function openEdit(agent: AgentRow) {
-    const config = agent.config ?? {};
-    setEditingId(agent.id);
-    setForm({
-      name: agent.name,
-      runtimeType: (agent.runtimeType as AgentRuntimeType) ?? 'openclaw',
-      modelProviderId: agent.modelProviderId ?? '',
-      model: config.model ?? '',
-      systemPrompt: config.systemPrompt ?? '',
-      skillsText: stringifySkills(agent.skills),
-      workspaceText: stringifyWorkspace(agent.workspace),
-      knowledgeText: stringifyKnowledge(agent.knowledgeBase),
-      isActive: agent.isActive,
-      isDefault: agent.isDefault,
-    });
-    setError('');
-    setShowForm(true);
-  }
-
-  function onModelProviderChange(modelProviderId: string) {
-    const provider = models.find((m) => m.id === modelProviderId);
-    setForm((f) => ({ ...f, modelProviderId, model: provider?.models?.[0] ?? f.model }));
-  }
-
-  async function save(e: React.FormEvent) {
-    e.preventDefault();
-    setSaving(true);
-    setError('');
+  async function runtimeAction(containerName: string, action: 'start' | 'stop' | 'restart') {
+    setActionId(`${containerName}:${action}`);
     try {
-      const payload = {
-        name: form.name,
-        type: form.runtimeType === 'openclaw' ? 'openclaw' : 'custom',
-        runtimeType: form.runtimeType,
-        modelProviderId: form.modelProviderId || null,
-        config: {
-          model: form.model || undefined,
-          systemPrompt: form.systemPrompt || undefined,
-        },
-        skills: parseSkills(form.skillsText),
-        workspace: parseWorkspace(form.workspaceText),
-        knowledgeBase: parseKnowledge(form.knowledgeText),
-        isActive: form.isActive,
-        isDefault: form.isDefault,
-      };
-      const res = editingId
-        ? await api.patch<ApiResponse<AgentRow>>(`/api/agents/${editingId}`, payload)
-        : await api.post<ApiResponse<AgentRow>>('/api/agents', payload);
-      if (!res.ok) { setError(typeof res.error === 'string' ? res.error : JSON.stringify(res.error)); return; }
-      setShowForm(false);
+      await api.post<ApiResponse<unknown>>(`/api/agent-instances/${containerName}/${action}`, {});
       await load();
     } finally {
-      setSaving(false);
+      setActionId(null);
     }
   }
 
-  async function remove(id: string) {
-    if (!confirm('Delete this agent template?')) return;
-    const res = await api.delete<ApiResponse<null>>(`/api/agents/${id}`);
-    if (res.ok) setAgents((prev) => prev.filter((agent) => agent.id !== id));
-  }
-
   return (
-    <div className="p-8 max-w-6xl">
+    <div className="p-8 max-w-7xl">
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Agents</h1>
-          <p className="text-gray-500 mt-1">Create reusable agent templates with runtime, model, skills, workspace files, and knowledge.</p>
+          <p className="text-gray-500 mt-1">Runtime instances dynamically created from channel-bound agent templates.</p>
         </div>
-        {isAdmin && <button className="btn-primary" onClick={openCreate}><Plus className="h-4 w-4" /> Create agent</button>}
+        <button className="btn-secondary" onClick={() => void load()} disabled={loading}>
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+          Refresh
+        </button>
       </div>
-
-      {showForm && (
-        <div className="card p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-gray-900">{editingId ? 'Edit agent template' : 'New agent template'}</h2>
-            <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600"><X className="h-4 w-4" /></button>
-          </div>
-          <form onSubmit={save} className="space-y-5">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="label">Agent name</label>
-                <input className="input" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Sales Assistant" required />
-              </div>
-              <div>
-                <label className="label">Runtime</label>
-                <select className="input" value={form.runtimeType} onChange={(e) => setForm((f) => ({ ...f, runtimeType: e.target.value as AgentRuntimeType }))}>
-                  {Object.entries(AGENT_RUNTIME_DESCRIPTORS).map(([type, descriptor]) => <option key={type} value={type}>{descriptor.label}</option>)}
-                </select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="label">Model provider</label>
-                <select className="input" value={form.modelProviderId} onChange={(e) => onModelProviderChange(e.target.value)}>
-                  <option value="">No provider</option>
-                  {models.filter((m) => m.isActive).map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="label">Model</label>
-                <input className="input font-mono text-xs" value={form.model} onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))} placeholder="MiniMax-M2.7-highspeed" />
-              </div>
-            </div>
-
-            <div>
-              <label className="label">System prompt</label>
-              <textarea className="input min-h-[90px] text-sm" value={form.systemPrompt} onChange={(e) => setForm((f) => ({ ...f, systemPrompt: e.target.value }))} placeholder="Define the agent role, boundaries, and response style." />
-            </div>
-
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <label className="label">Skills</label>
-                <textarea className="input min-h-[140px] font-mono text-xs" value={form.skillsText} onChange={(e) => setForm((f) => ({ ...f, skillsText: e.target.value }))} placeholder="browser&#10;memory&#10;files" />
-              </div>
-              <div>
-                <label className="label">Workspace Markdown</label>
-                <textarea className="input min-h-[140px] font-mono text-xs" value={form.workspaceText} onChange={(e) => setForm((f) => ({ ...f, workspaceText: e.target.value }))} placeholder="# README.md" />
-              </div>
-              <div>
-                <label className="label">Knowledge base</label>
-                <textarea className="input min-h-[140px] text-xs" value={form.knowledgeText} onChange={(e) => setForm((f) => ({ ...f, knowledgeText: e.target.value }))} placeholder="Separate knowledge blocks with blank lines." />
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={form.isActive} onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.checked }))} /> Active</label>
-              <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={form.isDefault} onChange={(e) => setForm((f) => ({ ...f, isDefault: e.target.checked }))} /> Default fallback agent</label>
-            </div>
-
-            {error && <p className="text-sm text-red-600">{error}</p>}
-            <div className="flex gap-3">
-              <button type="submit" className="btn-primary" disabled={saving}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save</button>
-              <button type="button" className="btn-secondary" onClick={() => setShowForm(false)}>Cancel</button>
-            </div>
-          </form>
-        </div>
-      )}
 
       {loading ? (
         <div className="flex items-center justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-teal-500" /></div>
-      ) : agents.length === 0 ? (
+      ) : rows.length === 0 ? (
         <div className="card p-10 text-center">
           <BotMessageSquare className="h-9 w-9 text-gray-300 mx-auto mb-3" />
-          <p className="font-medium text-gray-500">No agent templates yet</p>
-          <p className="text-sm text-gray-400 mt-1">Create an OpenClaw or Hermass runtime template and bind it to a channel.</p>
+          <p className="font-medium text-gray-500">No runtime agents yet</p>
+          <p className="text-sm text-gray-400 mt-1">Bind a channel to an agent template, then send a user message to create an isolated runtime.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {agents.map((agent) => (
-            <div key={agent.id} className="card p-5">
-              <div className="flex items-start justify-between gap-4">
-                <div>
+        <div className="space-y-4">
+          {rows.map((row) => {
+            const status = row.runtime?.status ?? 'missing';
+            const busy = actionId?.startsWith(row.containerName);
+            return (
+              <div key={row.id} className="card p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h2 className="font-semibold text-gray-900 truncate">{row.backend?.name ?? 'Unknown agent'}</h2>
+                      <span className={statusClass[status] ?? 'badge-gray'}>{status}</span>
+                      {row.runtime?.health && <span className="badge-gray">{row.runtime.health}</span>}
+                      {row.agentTemplateVersion && <span className="badge-yellow">v{row.agentTemplateVersion.version}</span>}
+                    </div>
+                    <p className="text-sm text-gray-500 mt-1">
+                      {row.channel.name} · {row.channel.type} · {row.endUser.name ?? row.endUser.externalId}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-1 font-mono truncate">{row.containerName}</p>
+                  </div>
                   <div className="flex items-center gap-2">
-                    <h2 className="font-semibold text-gray-900">{agent.name}</h2>
-                    {agent.isDefault && <span className="badge-yellow">default</span>}
-                    {!agent.isActive && <span className="badge-gray">inactive</span>}
+                    <button className="btn-secondary text-xs" onClick={() => runtimeAction(row.containerName, 'start')} disabled={busy || row.runtime?.running === true}>
+                      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />} Start
+                    </button>
+                    <button className="btn-secondary text-xs" onClick={() => runtimeAction(row.containerName, 'restart')} disabled={busy || !row.runtime}>
+                      <RotateCw className="h-3.5 w-3.5" /> Restart
+                    </button>
+                    <button className="btn-secondary text-xs" onClick={() => runtimeAction(row.containerName, 'stop')} disabled={busy || row.runtime?.running !== true}>
+                      <Square className="h-3.5 w-3.5" /> Stop
+                    </button>
                   </div>
-                  <p className="text-sm text-gray-500 mt-1">{AGENT_RUNTIME_DESCRIPTORS[(agent.runtimeType as AgentRuntimeType) ?? 'openclaw']?.label ?? agent.runtimeType}</p>
                 </div>
-                {isAdmin && (
-                  <div className="flex items-center gap-1">
-                    <button className="p-1.5 text-gray-400 hover:text-gray-700" onClick={() => openEdit(agent)} title="Edit"><Pencil className="h-4 w-4" /></button>
-                    <button className="p-1.5 text-gray-400 hover:text-red-500" onClick={() => remove(agent.id)} title="Delete"><Trash2 className="h-4 w-4" /></button>
-                  </div>
-                )}
+                <div className="mt-4 grid grid-cols-2 lg:grid-cols-5 gap-3 text-xs">
+                  <div className="rounded bg-gray-50 p-2"><p className="text-gray-400">Model</p><p className="truncate">{row.modelProvider?.name ?? 'default'}</p></div>
+                  <div className="rounded bg-gray-50 p-2"><p className="text-gray-400">Last message</p><p>{new Date(row.lastMessageAt).toLocaleString()}</p></div>
+                  <div className="rounded bg-gray-50 p-2"><p className="text-gray-400">Latency</p><p>{row.lastLatencyMs ? `${row.lastLatencyMs}ms` : '-'}</p></div>
+                  <div className="rounded bg-gray-50 p-2"><p className="text-gray-400">State</p><p className="truncate font-mono">{row.stateDir}</p></div>
+                  <div className="rounded bg-gray-50 p-2"><p className="text-gray-400">Workspace</p><p className="truncate font-mono">{row.workspaceDir}</p></div>
+                </div>
               </div>
-              <div className="mt-4 grid grid-cols-3 gap-3 text-xs">
-                <div className="rounded bg-gray-50 p-2"><p className="text-gray-400">Model</p><p className="font-mono text-gray-700 truncate">{agent.config?.model ?? agent.modelProvider?.name ?? 'none'}</p></div>
-                <div className="rounded bg-gray-50 p-2"><p className="text-gray-400">Skills</p><p className="text-gray-700">{agent.skills?.length ?? 0}</p></div>
-                <div className="rounded bg-gray-50 p-2"><p className="text-gray-400">Knowledge</p><p className="text-gray-700">{agent.knowledgeBase?.length ?? 0}</p></div>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
   );
 }
-

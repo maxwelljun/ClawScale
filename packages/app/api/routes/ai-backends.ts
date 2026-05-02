@@ -66,6 +66,10 @@ const updateSchema = z.object({
   isDefault: z.boolean().optional(),
 });
 
+const publishSchema = z.object({
+  notes: z.string().max(1000).optional(),
+});
+
 export const aiBackendsRouter = Router();
 aiBackendsRouter.use(requireAuth);
 
@@ -134,6 +138,62 @@ aiBackendsRouter.get('/:id', requireAdmin, async (req, res) => {
   const backend = await db.aiBackend.findFirst({ where: { id, tenantId } });
   if (!backend) { res.status(404).json({ ok: false, error: 'AI backend not found' }); return; }
   res.json({ ok: true, data: backend });
+});
+
+// ── GET /api/agents/:id/versions ─────────────────────────────────────────────
+aiBackendsRouter.get('/:id/versions', requireAdmin, async (req, res) => {
+  const { tenantId } = req.auth!;
+  const id = req.params.id as string;
+  const backend = await db.aiBackend.findFirst({ where: { id, tenantId }, select: { id: true } });
+  if (!backend) { res.status(404).json({ ok: false, error: 'Agent template not found' }); return; }
+
+  const rows = await db.agentTemplateVersion.findMany({
+    where: { tenantId, agentTemplateId: id },
+    orderBy: { version: 'desc' },
+  });
+  res.json({ ok: true, data: rows });
+});
+
+// ── POST /api/agents/:id/publish ─────────────────────────────────────────────
+aiBackendsRouter.post('/:id/publish', requireAdmin, validate(publishSchema), async (req, res) => {
+  const { tenantId, userId } = req.auth!;
+  const id = req.params.id as string;
+  const backend = await db.aiBackend.findFirst({
+    where: { id, tenantId },
+    include: { modelProvider: { select: { id: true, name: true, provider: true, baseUrl: true, models: true } } },
+  });
+  if (!backend) { res.status(404).json({ ok: false, error: 'Agent template not found' }); return; }
+
+  const latest = await db.agentTemplateVersion.findFirst({
+    where: { tenantId, agentTemplateId: id },
+    orderBy: { version: 'desc' },
+    select: { version: true },
+  });
+  const version = (latest?.version ?? 0) + 1;
+  const row = await db.agentTemplateVersion.create({
+    data: {
+      id: generateId('agtv'),
+      tenantId,
+      agentTemplateId: id,
+      version,
+      name: backend.name,
+      notes: req.body.notes ?? null,
+      snapshot: {
+        name: backend.name,
+        type: backend.type,
+        runtimeType: backend.runtimeType,
+        modelProviderId: backend.modelProviderId,
+        modelProvider: backend.modelProvider,
+        config: backend.config,
+        skills: backend.skills,
+        workspace: backend.workspace,
+        knowledgeBase: backend.knowledgeBase,
+      },
+    },
+  });
+
+  await audit({ tenantId, memberId: userId, action: 'publish_agent_template', resource: 'agent_template_version', resourceId: row.id });
+  res.status(201).json({ ok: true, data: row });
 });
 
 // ── PATCH /api/ai-backends/:id ───────────────────────────────────────────────

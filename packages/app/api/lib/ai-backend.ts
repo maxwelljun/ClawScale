@@ -415,10 +415,10 @@ async function handleOpenAiSdk(
     const queueKey = openClawQueueKey(options.openclaw, sessionKey);
     const startedAt = Date.now();
     const response = await runOpenClawQueued(queueKey, async () => {
-      const messages = [
-        { role: 'system' as const, content: openClawRuntimeSystemPrompt(options.openclawTemplate) },
-        ...history.map(toOpenAiMessage),
-      ];
+      const systemPrompt = openClawRuntimeSystemPrompt(options.openclawTemplate);
+      const messages = systemPrompt
+        ? [{ role: 'system' as const, content: systemPrompt }, ...history.map(toOpenAiMessage)]
+        : history.map(toOpenAiMessage);
       const res = await fetch(`${url.replace(/\/$/, '')}/v1/chat/completions`, {
         method: 'POST',
         headers: {

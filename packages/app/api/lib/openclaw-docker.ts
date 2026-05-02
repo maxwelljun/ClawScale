@@ -126,12 +126,13 @@ export function openClawSessionKey(identity: OpenClawRuntimeIdentity): string {
   ].join(':'))}`;
 }
 
-export function openClawRuntimeSystemPrompt(template?: OpenClawRuntimeTemplate): string {
+export function openClawRuntimeSystemPrompt(template?: OpenClawRuntimeTemplate): string | null {
+  const custom = template?.systemPrompt?.trim();
+  if (!custom) return null;
   const name = template?.name?.trim() || 'ClawBot Agent';
   const model = template?.modelProvider?.model?.trim() || 'the configured OpenClaw model';
-  const custom = template?.systemPrompt?.trim();
   return [
-    custom || `You are ${name}, an agent running through ClawBot inside an isolated OpenClaw runtime.`,
+    custom,
     `Your configured model is ${model}. If the user asks what model or agent you are, answer directly with the agent name and this configured model.`,
     'Reply in the same language as the user unless the user asks otherwise.',
     'Do not claim that you lack previous conversation context unless the user explicitly asks to recover work that is not present in this runtime.',
@@ -223,6 +224,7 @@ function defaultRuntimeConfig(identity: OpenClawRuntimeIdentity, template?: Open
   if (!providerId || !providerBaseUrl || !defaultModel) {
     return config;
   }
+  const prompt = openClawRuntimeSystemPrompt(template);
 
   return mergeObject(config, {
     models: {
@@ -248,8 +250,7 @@ function defaultRuntimeConfig(identity: OpenClawRuntimeIdentity, template?: Open
       defaults: {
         skipBootstrap: true,
         model: { primary: `${providerId}/${defaultModel}` },
-        systemPrompt: openClawRuntimeSystemPrompt(template),
-        instructions: openClawRuntimeSystemPrompt(template),
+        ...(prompt ? { systemPrompt: prompt, instructions: prompt } : {}),
       },
     },
   });
@@ -286,7 +287,7 @@ async function writeTemplateWorkspace(workspaceDir: string, template?: OpenClawR
   const root = path.join(workspaceDir, '.clawbot');
   await fs.mkdir(root, { recursive: true });
 
-  const workspaceFiles = template.workspace ?? [];
+  const workspaceFiles = customWorkspaceFiles(template);
   const managedPaths = new Set<string>();
   for (const file of workspaceFiles) {
     const safePath = safeRelativePath(file.path);
@@ -296,13 +297,16 @@ async function writeTemplateWorkspace(workspaceDir: string, template?: OpenClawR
     await fs.writeFile(target, file.content);
   }
 
-  await writeManagedMarkdown(workspaceDir, managedPaths, 'IDENTITY.md', identityMarkdown(template));
-  await writeManagedMarkdown(workspaceDir, managedPaths, 'SOUL.md', soulMarkdown(template));
-  await writeManagedMarkdown(workspaceDir, managedPaths, 'AGENTS.md', agentsMarkdown(template));
-  await writeManagedMarkdown(workspaceDir, managedPaths, 'TOOLS.md', toolsMarkdown(template));
-  await writeManagedMarkdown(workspaceDir, managedPaths, 'USER.md', userMarkdown());
+  const prompt = openClawRuntimeSystemPrompt(template);
+  const skills = customSkills(template);
+  if (prompt) {
+    await writeManagedMarkdown(workspaceDir, managedPaths, 'SOUL.md', soulMarkdown(prompt));
+    await writeManagedMarkdown(workspaceDir, managedPaths, 'AGENTS.md', agentsMarkdown(template));
+  }
+  if (skills.length > 0) {
+    await writeManagedMarkdown(workspaceDir, managedPaths, 'TOOLS.md', toolsMarkdown(skills));
+  }
 
-  const skills = (template.skills ?? []).filter((skill) => skill.enabled !== false);
   if (skills.length > 0) {
     await fs.writeFile(path.join(root, 'skills.md'), skills.map((skill) =>
       `- ${skill.name}${skill.description ? `: ${skill.description}` : ''}`,
@@ -352,8 +356,8 @@ function identityMarkdown(template: OpenClawRuntimeTemplate): string {
   return `# Identity\n\nName: ${template.name ?? 'ClawBot Agent'}\n`;
 }
 
-function soulMarkdown(template: OpenClawRuntimeTemplate): string {
-  return `# Soul\n\n${openClawRuntimeSystemPrompt(template)}\n`;
+function soulMarkdown(prompt: string): string {
+  return `# Soul\n\n${prompt}\n`;
 }
 
 function agentsMarkdown(template: OpenClawRuntimeTemplate): string {
@@ -361,8 +365,8 @@ function agentsMarkdown(template: OpenClawRuntimeTemplate): string {
   return `# Agent Operating Instructions\n\nYou are running inside an isolated ClawBot-managed OpenClaw runtime.${model}\n\nUse this workspace as the source of truth for this user, channel, and agent instance. Preserve user memory and session state inside this runtime.\n`;
 }
 
-function toolsMarkdown(template: OpenClawRuntimeTemplate): string {
-  const skills = (template.skills ?? []).filter((skill) => skill.enabled !== false).map((skill) => `- ${skill.name}${skill.description ? `: ${skill.description}` : ''}`);
+function toolsMarkdown(skillsInput: Array<{ name: string; description?: string }>): string {
+  const skills = skillsInput.map((skill) => `- ${skill.name}${skill.description ? `: ${skill.description}` : ''}`);
   return `# Tools\n\n${skills.length > 0 ? skills.join('\n') : 'Use only the tools enabled by the runtime configuration.'}\n`;
 }
 
@@ -372,6 +376,28 @@ function userMarkdown(): string {
 
 function skillMarkdown(skill: { name: string; description?: string }): string {
   return `# ${skill.name}\n\n${skill.description || `Use the ${skill.name} capability when it is relevant to the user's request.`}\n`;
+}
+
+function customSkills(template: OpenClawRuntimeTemplate): Array<{ name: string; description?: string; enabled?: boolean }> {
+  const skills = (template.skills ?? []).filter((skill) => skill.enabled !== false && skill.name.trim());
+  const names = skills.map((skill) => skill.name.trim()).sort().join(',');
+  if (names === 'browser,files,memory') return [];
+  return skills;
+}
+
+function customWorkspaceFiles(template: OpenClawRuntimeTemplate): Array<{ path: string; content: string }> {
+  const files = (template.workspace ?? []).filter((file) => file.path.trim());
+  if (files.length !== 1) return files;
+  const file = files[0]!;
+  const filePath = file.path.trim().toLowerCase();
+  const content = file.content.trim();
+  if (filePath === 'readme.md' && (
+    content === '# Workspace\n\nAgent workspace notes go here.'
+    || content === '# README.md\nAgent workspace notes go here.'
+  )) {
+    return [];
+  }
+  return files;
 }
 
 async function inspectContainer(name: string): Promise<DockerInspect | null> {

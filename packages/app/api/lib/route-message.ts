@@ -215,9 +215,11 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
       },
     });
   }
-  const openClawBackends = allBackends.filter((backend) => backend.type === 'openclaw');
-  if (isNewUser && openClawBackends.length > 0 && process.env.OPENCLAW_DOCKER_ISOLATION !== 'false') {
-    for (const backend of openClawBackends) {
+  if (isNewUser && process.env.OPENCLAW_DOCKER_ISOLATION !== 'false') {
+    const prewarmBackends = channel.agentTemplateId
+      ? allBackends.slice(0, 1)
+      : [allBackends.find((backend) => backend.isDefault) ?? (allBackends.length === 1 ? allBackends[0] : null)].filter((backend): backend is typeof allBackends[number] => Boolean(backend));
+    for (const backend of prewarmBackends.filter((item) => item.type === 'openclaw')) {
       prewarmOpenClawDockerRuntime({
         tenantId,
         channelId,

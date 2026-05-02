@@ -919,7 +919,6 @@ function buildOpenClawTemplate(backend: {
     apiKey: string | null;
     models: unknown;
   } | null;
-  skills?: unknown;
   workspace?: unknown;
   knowledgeBase?: unknown;
 }): OpenClawRuntimeTemplate {
@@ -927,7 +926,6 @@ function buildOpenClawTemplate(backend: {
   const model = cfg.model ?? readFirstModel(backend.modelProvider?.models) ?? null;
   return {
     name: backend.name,
-    systemPrompt: cfg.systemPrompt ?? null,
     modelProvider: backend.modelProvider ? {
       id: backend.modelProvider.id,
       provider: backend.modelProvider.provider,
@@ -936,7 +934,6 @@ function buildOpenClawTemplate(backend: {
       model,
       api: readModelProviderApi(backend.modelProvider),
     } : null,
-    skills: readJsonArray(backend.skills),
     workspace: readJsonArray(backend.workspace),
     knowledgeBase: readJsonArray(backend.knowledgeBase),
   };

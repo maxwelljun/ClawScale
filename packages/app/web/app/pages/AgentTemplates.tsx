@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { BotMessageSquare, Loader2, Pencil, Plus, Rocket, Save, Trash2, X } from 'lucide-react';
 import { api } from '@/lib/api';
 import { getUser } from '@/lib/auth';
-import type { AgentKnowledgeItem, AgentRuntimeType, AgentSkill, AgentTemplateVersion, AgentWorkspaceFile, AiBackend, ApiResponse, ModelProvider } from '@clawscale/shared';
+import type { AgentKnowledgeItem, AgentRuntimeType, AgentTemplateVersion, AgentWorkspaceFile, AiBackend, ApiResponse, ModelProvider } from '@clawscale/shared';
 import { AGENT_RUNTIME_DESCRIPTORS } from '@clawscale/shared';
 
 type AgentRow = AiBackend & {
@@ -16,44 +16,11 @@ type AgentForm = {
   runtimeType: AgentRuntimeType;
   modelProviderId: string;
   model: string;
-  systemPrompt: string;
-  skills: AgentSkill[];
   workspace: AgentWorkspaceFile[];
   knowledgeBase: AgentKnowledgeItem[];
   isActive: boolean;
   isDefault: boolean;
 };
-
-const openClawDefaultSystemPrompt = [
-  'Be genuinely helpful, not performatively helpful. Skip filler and help directly.',
-  'Have opinions when useful. Be concise when needed and thorough when it matters.',
-  'Be resourceful before asking: read context, inspect files, and try to figure it out first.',
-  'Respect privacy. Ask before external actions or anything destructive.',
-  'Each session may start fresh. Use workspace files and memory files for continuity.',
-].join('\n');
-
-const openClawDefaultSkills: AgentSkill[] = [
-  {
-    name: 'acp-router',
-    description: 'Route coding-agent and ACP harness requests through OpenClaw ACP runtime sessions.',
-    enabled: true,
-  },
-  {
-    name: 'diffs',
-    description: 'Use the bundled diffs tool to produce shareable diffs instead of manual edit summaries.',
-    enabled: true,
-  },
-  {
-    name: 'prose',
-    description: 'Activate OpenProse workflows for prose commands, .prose files, and multi-agent orchestration.',
-    enabled: true,
-  },
-  {
-    name: 'tavily',
-    description: 'Use Tavily search and extraction tools when the runtime has Tavily configured.',
-    enabled: true,
-  },
-];
 
 const openClawDefaultWorkspace: AgentWorkspaceFile[] = [
   {
@@ -185,8 +152,6 @@ const emptyForm: AgentForm = {
   runtimeType: 'openclaw',
   modelProviderId: '',
   model: '',
-  systemPrompt: openClawDefaultSystemPrompt,
-  skills: openClawDefaultSkills,
   workspace: openClawDefaultWorkspace,
   knowledgeBase: [],
   isActive: true,
@@ -196,7 +161,6 @@ const emptyForm: AgentForm = {
 function freshForm(): AgentForm {
   return {
     ...emptyForm,
-    skills: emptyForm.skills.map((skill) => ({ ...skill })),
     workspace: emptyForm.workspace.map((file) => ({ ...file })),
     knowledgeBase: emptyForm.knowledgeBase.map((item) => ({ ...item })),
   };
@@ -247,8 +211,6 @@ export default function AgentTemplates() {
       runtimeType: (agent.runtimeType as AgentRuntimeType) ?? 'openclaw',
       modelProviderId: agent.modelProviderId ?? '',
       model: config.model ?? '',
-      systemPrompt: config.systemPrompt ?? '',
-      skills: agent.skills?.length ? agent.skills.map((skill) => ({ ...skill })) : freshForm().skills,
       workspace: agent.workspace?.length ? agent.workspace.map((file) => ({ ...file })) : freshForm().workspace,
       knowledgeBase: agent.knowledgeBase?.map((item) => ({ ...item })) ?? [],
       isActive: agent.isActive,
@@ -261,10 +223,6 @@ export default function AgentTemplates() {
   function onModelProviderChange(modelProviderId: string) {
     const provider = models.find((m) => m.id === modelProviderId);
     setForm((f) => ({ ...f, modelProviderId, model: provider?.models?.[0] ?? f.model }));
-  }
-
-  function updateSkill(index: number, patch: Partial<AgentSkill>) {
-    setForm((f) => ({ ...f, skills: f.skills.map((skill, i) => i === index ? { ...skill, ...patch } : skill) }));
   }
 
   function updateWorkspace(index: number, patch: Partial<AgentWorkspaceFile>) {
@@ -287,9 +245,8 @@ export default function AgentTemplates() {
         modelProviderId: form.modelProviderId || null,
         config: {
           model: form.model || undefined,
-          systemPrompt: form.systemPrompt || undefined,
         },
-        skills: form.skills.filter((skill) => skill.name.trim()).map((skill) => ({ ...skill, name: skill.name.trim() })),
+        skills: [],
         workspace: form.workspace.filter((file) => file.path.trim()).map((file) => ({ ...file, path: file.path.trim() })),
         knowledgeBase: form.knowledgeBase.filter((item) => item.title.trim() && item.content.trim()).map((item) => ({ ...item, title: item.title.trim() })),
         isActive: form.isActive,
@@ -364,31 +321,6 @@ export default function AgentTemplates() {
                   {(models.find((m) => m.id === form.modelProviderId)?.models ?? []).map((model) => <option key={model} value={model}>{model}</option>)}
                   {form.model && !(models.find((m) => m.id === form.modelProviderId)?.models ?? []).includes(form.model) && <option value={form.model}>{form.model}</option>}
                 </select>
-              </div>
-            </div>
-
-            <div>
-              <label className="label">System prompt</label>
-              <textarea className="input min-h-[90px] text-sm" value={form.systemPrompt} onChange={(e) => setForm((f) => ({ ...f, systemPrompt: e.target.value }))} placeholder="Define the agent role, boundaries, and response style." />
-            </div>
-
-            <div className="rounded-lg border border-gray-200 p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-medium text-gray-900">Skills</h3>
-                  <p className="text-xs text-gray-400">Generated into workspace/skills/&lt;name&gt;/SKILL.md and TOOLS.md.</p>
-                </div>
-                <button type="button" className="btn-secondary text-xs" onClick={() => setForm((f) => ({ ...f, skills: [...f.skills, { name: '', description: '', enabled: true }] }))}><Plus className="h-3.5 w-3.5" /> Add skill</button>
-              </div>
-              <div className="mt-3 space-y-2">
-                {form.skills.map((skill, index) => (
-                  <div key={index} className="grid grid-cols-[1fr_2fr_auto_auto] gap-2">
-                    <input className="input text-xs" value={skill.name} onChange={(e) => updateSkill(index, { name: e.target.value })} placeholder="browser" />
-                    <input className="input text-xs" value={skill.description ?? ''} onChange={(e) => updateSkill(index, { description: e.target.value })} placeholder="Skill behavior and trigger" />
-                    <label className="flex items-center gap-1 text-xs text-gray-500"><input type="checkbox" checked={skill.enabled !== false} onChange={(e) => updateSkill(index, { enabled: e.target.checked })} /> Enabled</label>
-                    <button type="button" className="text-gray-400 hover:text-red-500" onClick={() => setForm((f) => ({ ...f, skills: f.skills.filter((_, i) => i !== index) }))}><Trash2 className="h-4 w-4" /></button>
-                  </div>
-                ))}
               </div>
             </div>
 
@@ -479,7 +411,7 @@ export default function AgentTemplates() {
               </div>
               <div className="mt-4 grid grid-cols-3 gap-3 text-xs">
                 <div className="rounded bg-gray-50 p-2"><p className="text-gray-400">Model</p><p className="font-mono text-gray-700 truncate">{agent.config?.model ?? agent.modelProvider?.name ?? 'none'}</p></div>
-                <div className="rounded bg-gray-50 p-2"><p className="text-gray-400">Skills</p><p className="text-gray-700">{agent.skills?.length ?? 0}</p></div>
+                <div className="rounded bg-gray-50 p-2"><p className="text-gray-400">Workspace</p><p className="text-gray-700">{agent.workspace?.length ?? 0}</p></div>
                 <div className="rounded bg-gray-50 p-2"><p className="text-gray-400">Latest</p><p className="text-gray-700">{agent.versions?.[0] ? `v${agent.versions[0].version}` : 'draft'}</p></div>
               </div>
               {agent.versions && agent.versions.length > 0 && (

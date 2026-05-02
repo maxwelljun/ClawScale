@@ -18,7 +18,7 @@ import type {
   ResponseFormat,
 } from '../../shared/index.js';
 import { BACKEND_TYPE_DESCRIPTORS } from '../../shared/index.js';
-import { ensureOpenClawDockerRuntime, openClawRuntimeSystemPrompt, openClawSessionKey, type OpenClawRuntimeIdentity, type OpenClawRuntimeTemplate } from './openclaw-docker.js';
+import { ensureOpenClawDockerRuntime, openClawSessionKey, type OpenClawRuntimeIdentity, type OpenClawRuntimeTemplate } from './openclaw-docker.js';
 
 export interface PalmosContext {
   endUserId: string;
@@ -415,10 +415,7 @@ async function handleOpenAiSdk(
     const queueKey = openClawQueueKey(options.openclaw, sessionKey);
     const startedAt = Date.now();
     const response = await runOpenClawQueued(queueKey, async () => {
-      const systemPrompt = openClawRuntimeSystemPrompt(options.openclawTemplate);
-      const messages = systemPrompt
-        ? [{ role: 'system' as const, content: systemPrompt }, ...history.map(toOpenAiMessage)]
-        : history.map(toOpenAiMessage);
+      const messages = history.map(toOpenAiMessage);
       const res = await fetch(`${url.replace(/\/$/, '')}/v1/chat/completions`, {
         method: 'POST',
         headers: {

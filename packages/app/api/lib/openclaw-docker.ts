@@ -126,6 +126,19 @@ export function openClawSessionKey(identity: OpenClawRuntimeIdentity): string {
   ].join(':'))}`;
 }
 
+export function openClawRuntimeSystemPrompt(template?: OpenClawRuntimeTemplate): string {
+  const name = template?.name?.trim() || 'ClawBot Agent';
+  const model = template?.modelProvider?.model?.trim() || 'the configured OpenClaw model';
+  const custom = template?.systemPrompt?.trim();
+  return [
+    custom || `You are ${name}, an agent running through ClawBot inside an isolated OpenClaw runtime.`,
+    `Your configured model is ${model}. If the user asks what model or agent you are, answer directly with the agent name and this configured model.`,
+    'Reply in the same language as the user unless the user asks otherwise.',
+    'Do not claim that you lack previous conversation context unless the user explicitly asks to recover work that is not present in this runtime.',
+    'Use this runtime workspace, memory, sessions, tools, and files as the source of truth for this tenant/channel/user/backend instance.',
+  ].join('\n');
+}
+
 async function docker(args: string[]): Promise<string> {
   const { stdout } = await execFileAsync('docker', args, {
     maxBuffer: 1024 * 1024,
@@ -235,7 +248,8 @@ function defaultRuntimeConfig(identity: OpenClawRuntimeIdentity, template?: Open
       defaults: {
         skipBootstrap: true,
         model: { primary: `${providerId}/${defaultModel}` },
-        ...(template?.systemPrompt ? { systemPrompt: template.systemPrompt, instructions: template.systemPrompt } : {}),
+        systemPrompt: openClawRuntimeSystemPrompt(template),
+        instructions: openClawRuntimeSystemPrompt(template),
       },
     },
   });
@@ -339,7 +353,7 @@ function identityMarkdown(template: OpenClawRuntimeTemplate): string {
 }
 
 function soulMarkdown(template: OpenClawRuntimeTemplate): string {
-  return `# Soul\n\n${template.systemPrompt?.trim() || 'Follow the channel agent template instructions and respond helpfully.'}\n`;
+  return `# Soul\n\n${openClawRuntimeSystemPrompt(template)}\n`;
 }
 
 function agentsMarkdown(template: OpenClawRuntimeTemplate): string {

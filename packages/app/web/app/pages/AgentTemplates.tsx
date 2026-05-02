@@ -29,7 +29,7 @@ const emptyForm: AgentForm = {
   runtimeType: 'openclaw',
   modelProviderId: '',
   model: '',
-  systemPrompt: '',
+  systemPrompt: '你是一个通过 ClawBot 运行的独立 Agent。请直接回答用户问题，使用用户的语言回复；当用户询问你是什么模型或 Agent 时，说明当前 Agent 名称和所选模型。',
   skills: [
     { name: 'browser', description: 'Use browser capability when web inspection is needed.', enabled: true },
     { name: 'memory', description: 'Persist useful user preferences in isolated runtime memory.', enabled: true },

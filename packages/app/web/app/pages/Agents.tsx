@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { BotMessageSquare, Loader2, Play, RotateCw, Square, RefreshCw, Settings, FileText, Terminal, MoreHorizontal, X, Send } from 'lucide-react';
+import { BotMessageSquare, Loader2, Play, RotateCw, Square, RefreshCw, Settings, FileText, Terminal, MoreHorizontal, X, Send, Trash2 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { getToken } from '@/lib/auth';
 import type { ApiResponse } from '@clawscale/shared';
 
 type AgentInstance = {
@@ -24,6 +25,8 @@ type ConfigPayload = {
   dirs: { stateDir: string; workspaceDir: string } | null;
   inspect: unknown;
   openclawConfig: unknown;
+  currentModel: { providerId: string | null; model: string | null; primary: string | null };
+  modelProviders: Array<{ id: string; name: string; provider: string; baseUrl: string | null; models: string[]; config: Record<string, unknown> }>;
   manifest: unknown;
   version: unknown;
 };
@@ -46,6 +49,11 @@ export default function Agents() {
   const [logs, setLogs] = useState('');
   const [terminalCommand, setTerminalCommand] = useState('pwd && ls -la /home/node/.openclaw/workspace');
   const [terminalOutput, setTerminalOutput] = useState('');
+  const [quickCommandOutput, setQuickCommandOutput] = useState('');
+  const [terminalSocket, setTerminalSocket] = useState<WebSocket | null>(null);
+  const [terminalInput, setTerminalInput] = useState('');
+  const [runtimeModelProviderId, setRuntimeModelProviderId] = useState('');
+  const [runtimeModel, setRuntimeModel] = useState('');
   const [panelLoading, setPanelLoading] = useState(false);
 
   async function load() {
@@ -56,6 +64,7 @@ export default function Agents() {
   }
 
   useEffect(() => { void load(); }, []);
+  useEffect(() => () => terminalSocket?.close(), [terminalSocket]);
 
   async function runtimeAction(containerName: string, action: 'start' | 'stop' | 'restart') {
     setActionId(`${containerName}:${action}`);
@@ -73,6 +82,8 @@ export default function Agents() {
     setConfig(null);
     setLogs('');
     setTerminalOutput('');
+    setQuickCommandOutput('');
+    terminalSocket?.close();
     await loadPanel(row.containerName, nextTab);
   }
 
@@ -81,7 +92,11 @@ export default function Agents() {
     try {
       if (currentTab === 'config') {
         const res = await api.get<ApiResponse<ConfigPayload>>(`/api/agent-instances/${containerName}/config`);
-        if (res.ok) setConfig(res.data);
+        if (res.ok) {
+          setConfig(res.data);
+          setRuntimeModelProviderId(res.data.currentModel.providerId ?? res.data.modelProviders[0]?.id ?? '');
+          setRuntimeModel(res.data.currentModel.model ?? res.data.modelProviders[0]?.models?.[0] ?? '');
+        }
       } else if (currentTab === 'logs') {
         const res = await api.get<ApiResponse<{ logs: string }>>(`/api/agent-instances/${containerName}/logs?tail=300`);
         if (res.ok) setLogs(res.data.logs);
@@ -101,10 +116,61 @@ export default function Agents() {
     setPanelLoading(true);
     try {
       const res = await api.post<ApiResponse<{ output: string }>>(`/api/agent-instances/${selected.containerName}/exec`, { command: terminalCommand });
-      setTerminalOutput(res.ok ? res.data.output : res.error);
+      setQuickCommandOutput(res.ok ? res.data.output : res.error);
     } finally {
       setPanelLoading(false);
     }
+  }
+
+  async function saveRuntimeModel() {
+    if (!selected || !runtimeModelProviderId || !runtimeModel) return;
+    setPanelLoading(true);
+    try {
+      const res = await api.patch<ApiResponse<Pick<ConfigPayload, 'openclawConfig' | 'currentModel'>>>(`/api/agent-instances/${selected.containerName}/config`, {
+        modelProviderId: runtimeModelProviderId,
+        model: runtimeModel,
+      });
+      if (res.ok) {
+        setConfig((prev) => prev ? { ...prev, openclawConfig: res.data.openclawConfig, currentModel: res.data.currentModel } : prev);
+      }
+    } finally {
+      setPanelLoading(false);
+    }
+  }
+
+  function connectTerminal() {
+    if (!selected) return;
+    terminalSocket?.close();
+    const token = getToken();
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${protocol}//${window.location.host}/api/agent-instances/terminal?container=${encodeURIComponent(selected.containerName)}&token=${encodeURIComponent(token ?? '')}&shell=sh`);
+    setTerminalOutput('');
+    ws.onmessage = (event) => setTerminalOutput((prev) => prev + String(event.data));
+    ws.onclose = () => setTerminalSocket(null);
+    setTerminalSocket(ws);
+  }
+
+  function sendTerminalInput() {
+    if (!terminalSocket || terminalSocket.readyState !== WebSocket.OPEN) return;
+    terminalSocket.send(`${terminalInput}\n`);
+    setTerminalInput('');
+  }
+
+  async function deleteRuntime(removeData: boolean) {
+    if (!selected) return;
+    const message = removeData
+      ? 'Delete this runtime container and its state/workspace data? This cannot be undone.'
+      : 'Delete this runtime container? State/workspace data will be kept.';
+    if (!confirm(message)) return;
+    await api.delete<ApiResponse<null>>(`/api/agent-instances/${selected.containerName}${removeData ? '?data=true' : ''}`);
+    terminalSocket?.close();
+    setSelected(null);
+    await load();
+  }
+
+  function closePanel() {
+    terminalSocket?.close();
+    setSelected(null);
   }
 
   return (
@@ -193,7 +259,7 @@ export default function Agents() {
                   <h2 className="text-lg font-semibold text-gray-900">{selected.backend?.name ?? 'Runtime agent'}</h2>
                   <p className="mt-1 font-mono text-xs text-gray-400">{selected.containerName}</p>
                 </div>
-                <button className="text-gray-400 hover:text-gray-600" onClick={() => setSelected(null)}><X className="h-5 w-5" /></button>
+                <button className="text-gray-400 hover:text-gray-600" onClick={closePanel}><X className="h-5 w-5" /></button>
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
                 <TabButton active={tab === 'config'} onClick={() => void switchTab('config')} icon={Settings} label="Config" />
@@ -207,6 +273,40 @@ export default function Agents() {
               {tab === 'config' && (
                 <div className="space-y-4">
                   <InfoGrid selected={selected} />
+                  <div className="rounded-lg border border-gray-200 p-4">
+                    <h3 className="font-medium text-gray-900">Model configuration</h3>
+                    <div className="mt-3 grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="label">Model provider</label>
+                        <select className="input" value={runtimeModelProviderId} onChange={(e) => {
+                          const provider = config?.modelProviders.find((item) => item.id === e.target.value);
+                          setRuntimeModelProviderId(e.target.value);
+                          setRuntimeModel(provider?.models?.[0] ?? runtimeModel);
+                        }}>
+                          {(config?.modelProviders ?? []).map((provider) => (
+                            <option key={provider.id} value={provider.id}>{provider.name} · {provider.provider}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="label">Model</label>
+                        <select className="input font-mono text-xs" value={runtimeModel} onChange={(e) => setRuntimeModel(e.target.value)}>
+                          {(config?.modelProviders.find((provider) => provider.id === runtimeModelProviderId)?.models ?? []).map((model) => (
+                            <option key={model} value={model}>{model}</option>
+                          ))}
+                          {runtimeModel && !(config?.modelProviders.find((provider) => provider.id === runtimeModelProviderId)?.models ?? []).includes(runtimeModel) && (
+                            <option value={runtimeModel}>{runtimeModel}</option>
+                          )}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex items-center gap-3">
+                      <button className="btn-primary text-xs" onClick={() => void saveRuntimeModel()} disabled={!runtimeModelProviderId || !runtimeModel || panelLoading}>
+                        <Settings className="h-3.5 w-3.5" /> Apply to runtime
+                      </button>
+                      <p className="text-xs text-gray-400">Applies to this isolated runtime. Restart if OpenClaw keeps the old model in memory.</p>
+                    </div>
+                  </div>
                   <JsonBlock title="ClawBot manifest" value={config?.manifest} />
                   <JsonBlock title="OpenClaw config" value={config?.openclawConfig} />
                   <JsonBlock title="Docker inspect" value={config?.inspect} />
@@ -221,15 +321,31 @@ export default function Agents() {
                 </div>
               )}
               {tab === 'terminal' && (
-                <div className="space-y-3">
-                  <div className="flex gap-2">
+                <div className="space-y-5">
+                  <div className="rounded-lg border border-gray-200 p-4">
+                    <h3 className="font-medium text-gray-900">Interactive terminal</h3>
+                    <div className="mt-3 flex gap-2">
+                      <button className="btn-primary text-xs" onClick={connectTerminal} disabled={!selected.runtime?.running}>
+                        <Terminal className="h-3.5 w-3.5" /> {terminalSocket ? 'Reconnect shell' : 'Connect shell'}
+                      </button>
+                    </div>
+                    <pre className="mt-3 min-h-[360px] overflow-auto rounded-lg bg-gray-950 p-4 text-xs leading-relaxed text-gray-100">{terminalOutput || 'Connect to open a live shell.'}</pre>
+                    <div className="mt-2 flex gap-2">
+                      <input className="input font-mono text-xs" value={terminalInput} onChange={(e) => setTerminalInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') sendTerminalInput(); }} placeholder="Type a shell command and press Enter" />
+                      <button className="btn-secondary" onClick={sendTerminalInput} disabled={!terminalSocket || terminalSocket.readyState !== WebSocket.OPEN}><Send className="h-4 w-4" /> Send</button>
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-gray-200 p-4">
+                    <h3 className="font-medium text-gray-900">Quick command</h3>
+                    <div className="mt-3 flex gap-2">
                     <input className="input font-mono text-xs" value={terminalCommand} onChange={(e) => setTerminalCommand(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void runTerminalCommand(); }} />
                     <button className="btn-primary" onClick={() => void runTerminalCommand()} disabled={!selected.runtime?.running || panelLoading}>
                       <Send className="h-4 w-4" /> Run
                     </button>
                   </div>
                   <p className="text-xs text-gray-400">Runs inside the selected OpenClaw container as a short-lived command.</p>
-                  <pre className="min-h-[420px] overflow-auto rounded-lg bg-gray-950 p-4 text-xs leading-relaxed text-gray-100">{terminalOutput || 'Command output will appear here.'}</pre>
+                  <pre className="min-h-[420px] overflow-auto rounded-lg bg-gray-950 p-4 text-xs leading-relaxed text-gray-100">{quickCommandOutput || 'Command output will appear here.'}</pre>
+                  </div>
                 </div>
               )}
               {tab === 'more' && (
@@ -244,6 +360,14 @@ export default function Agents() {
                     </div>
                   </div>
                   <JsonBlock title="Version" value={config?.version ?? selected.agentTemplateVersion} />
+                  <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+                    <h3 className="font-medium text-red-900">Delete runtime</h3>
+                    <p className="mt-1 text-sm text-red-700">Delete only removes the container. Delete with data also removes this user's isolated state and workspace.</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button className="btn-secondary text-xs text-red-600 hover:text-red-700" onClick={() => void deleteRuntime(false)}><Trash2 className="h-3.5 w-3.5" /> Delete container</button>
+                      <button className="btn-secondary text-xs text-red-600 hover:text-red-700" onClick={() => void deleteRuntime(true)}><Trash2 className="h-3.5 w-3.5" /> Delete container and data</button>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>

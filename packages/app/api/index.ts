@@ -13,6 +13,7 @@ import { tenantRouter } from "./routes/tenant.js";
 import { conversationsRouter } from "./routes/conversations.js";
 import { aiBackendsRouter } from "./routes/ai-backends.js";
 import { agentInstancesRouter } from "./routes/agent-instances.js";
+import { initAgentTerminalWebSocket } from "./routes/agent-instances.js";
 import { modelsRouter } from "./routes/models.js";
 import { endUsersRouter } from "./routes/end-users.js";
 import { onboardRouter } from "./routes/onboard.js";
@@ -115,6 +116,7 @@ const host = process.env["HOST"] ?? "0.0.0.0";
 const server = app.listen(port, host, () => {
   console.log(`ClawScale API running on http://${host}:${port}`);
   initBridgeWebSocket(server);
+  initAgentTerminalWebSocket(server);
   initDiscordAdapters().catch((err) =>
     console.error("[discord] Init failed:", err),
   );

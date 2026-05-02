@@ -17,9 +17,9 @@ type AgentForm = {
   modelProviderId: string;
   model: string;
   systemPrompt: string;
-  skillsText: string;
-  workspaceText: string;
-  knowledgeText: string;
+  skills: AgentSkill[];
+  workspace: AgentWorkspaceFile[];
+  knowledgeBase: AgentKnowledgeItem[];
   isActive: boolean;
   isDefault: boolean;
 };
@@ -30,39 +30,24 @@ const emptyForm: AgentForm = {
   modelProviderId: '',
   model: '',
   systemPrompt: '',
-  skillsText: 'browser\nmemory\nfiles',
-  workspaceText: '# README.md\nAgent workspace notes go here.',
-  knowledgeText: '',
+  skills: [
+    { name: 'browser', description: 'Use browser capability when web inspection is needed.', enabled: true },
+    { name: 'memory', description: 'Persist useful user preferences in isolated runtime memory.', enabled: true },
+    { name: 'files', description: 'Read and write files in the isolated workspace.', enabled: true },
+  ],
+  workspace: [{ path: 'README.md', content: '# Workspace\n\nAgent workspace notes go here.' }],
+  knowledgeBase: [],
   isActive: true,
   isDefault: false,
 };
 
-function parseSkills(text: string): AgentSkill[] {
-  return text.split('\n').map((line) => line.trim()).filter(Boolean).map((name) => ({ name, enabled: true }));
-}
-
-function parseWorkspace(text: string): AgentWorkspaceFile[] {
-  if (!text.trim()) return [];
-  return [{ path: 'README.md', content: text.trim() }];
-}
-
-function parseKnowledge(text: string): AgentKnowledgeItem[] {
-  return text.split('\n\n').map((block, index) => block.trim()).filter(Boolean).map((content, index) => ({
-    title: `Knowledge ${index + 1}`,
-    content,
-  }));
-}
-
-function stringifySkills(skills: AgentSkill[] | undefined): string {
-  return (skills ?? []).map((skill) => skill.name).join('\n');
-}
-
-function stringifyWorkspace(workspace: AgentWorkspaceFile[] | undefined): string {
-  return workspace?.[0]?.content ?? '';
-}
-
-function stringifyKnowledge(items: AgentKnowledgeItem[] | undefined): string {
-  return (items ?? []).map((item) => item.content).join('\n\n');
+function freshForm(): AgentForm {
+  return {
+    ...emptyForm,
+    skills: emptyForm.skills.map((skill) => ({ ...skill })),
+    workspace: emptyForm.workspace.map((file) => ({ ...file })),
+    knowledgeBase: emptyForm.knowledgeBase.map((item) => ({ ...item })),
+  };
 }
 
 export default function AgentTemplates() {
@@ -72,7 +57,7 @@ export default function AgentTemplates() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState<AgentForm>(emptyForm);
+  const [form, setForm] = useState<AgentForm>(freshForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -97,7 +82,7 @@ export default function AgentTemplates() {
 
   function openCreate() {
     setEditingId(null);
-    setForm({ ...emptyForm, modelProviderId: models[0]?.id ?? '', model: models[0]?.models?.[0] ?? '' });
+    setForm({ ...freshForm(), modelProviderId: models[0]?.id ?? '', model: models[0]?.models?.[0] ?? '' });
     setError('');
     setShowForm(true);
   }
@@ -111,9 +96,9 @@ export default function AgentTemplates() {
       modelProviderId: agent.modelProviderId ?? '',
       model: config.model ?? '',
       systemPrompt: config.systemPrompt ?? '',
-      skillsText: stringifySkills(agent.skills),
-      workspaceText: stringifyWorkspace(agent.workspace),
-      knowledgeText: stringifyKnowledge(agent.knowledgeBase),
+      skills: agent.skills?.length ? agent.skills.map((skill) => ({ ...skill })) : freshForm().skills,
+      workspace: agent.workspace?.length ? agent.workspace.map((file) => ({ ...file })) : freshForm().workspace,
+      knowledgeBase: agent.knowledgeBase?.map((item) => ({ ...item })) ?? [],
       isActive: agent.isActive,
       isDefault: agent.isDefault,
     });
@@ -124,6 +109,18 @@ export default function AgentTemplates() {
   function onModelProviderChange(modelProviderId: string) {
     const provider = models.find((m) => m.id === modelProviderId);
     setForm((f) => ({ ...f, modelProviderId, model: provider?.models?.[0] ?? f.model }));
+  }
+
+  function updateSkill(index: number, patch: Partial<AgentSkill>) {
+    setForm((f) => ({ ...f, skills: f.skills.map((skill, i) => i === index ? { ...skill, ...patch } : skill) }));
+  }
+
+  function updateWorkspace(index: number, patch: Partial<AgentWorkspaceFile>) {
+    setForm((f) => ({ ...f, workspace: f.workspace.map((file, i) => i === index ? { ...file, ...patch } : file) }));
+  }
+
+  function updateKnowledge(index: number, patch: Partial<AgentKnowledgeItem>) {
+    setForm((f) => ({ ...f, knowledgeBase: f.knowledgeBase.map((item, i) => i === index ? { ...item, ...patch } : item) }));
   }
 
   async function save(e: React.FormEvent) {
@@ -140,9 +137,9 @@ export default function AgentTemplates() {
           model: form.model || undefined,
           systemPrompt: form.systemPrompt || undefined,
         },
-        skills: parseSkills(form.skillsText),
-        workspace: parseWorkspace(form.workspaceText),
-        knowledgeBase: parseKnowledge(form.knowledgeText),
+        skills: form.skills.filter((skill) => skill.name.trim()).map((skill) => ({ ...skill, name: skill.name.trim() })),
+        workspace: form.workspace.filter((file) => file.path.trim()).map((file) => ({ ...file, path: file.path.trim() })),
+        knowledgeBase: form.knowledgeBase.filter((item) => item.title.trim() && item.content.trim()).map((item) => ({ ...item, title: item.title.trim() })),
         isActive: form.isActive,
         isDefault: form.isDefault,
       };
@@ -210,7 +207,11 @@ export default function AgentTemplates() {
               </div>
               <div>
                 <label className="label">Model</label>
-                <input className="input font-mono text-xs" value={form.model} onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))} placeholder="MiniMax-M2.7-highspeed" />
+                <select className="input font-mono text-xs" value={form.model} onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))}>
+                  <option value="">Provider default</option>
+                  {(models.find((m) => m.id === form.modelProviderId)?.models ?? []).map((model) => <option key={model} value={model}>{model}</option>)}
+                  {form.model && !(models.find((m) => m.id === form.modelProviderId)?.models ?? []).includes(form.model) && <option value={form.model}>{form.model}</option>}
+                </select>
               </div>
             </div>
 
@@ -219,18 +220,65 @@ export default function AgentTemplates() {
               <textarea className="input min-h-[90px] text-sm" value={form.systemPrompt} onChange={(e) => setForm((f) => ({ ...f, systemPrompt: e.target.value }))} placeholder="Define the agent role, boundaries, and response style." />
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <label className="label">Skills</label>
-                <textarea className="input min-h-[140px] font-mono text-xs" value={form.skillsText} onChange={(e) => setForm((f) => ({ ...f, skillsText: e.target.value }))} placeholder="browser&#10;memory&#10;files" />
+            <div className="rounded-lg border border-gray-200 p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-medium text-gray-900">Skills</h3>
+                  <p className="text-xs text-gray-400">Generated into workspace/skills/&lt;name&gt;/SKILL.md and TOOLS.md.</p>
+                </div>
+                <button type="button" className="btn-secondary text-xs" onClick={() => setForm((f) => ({ ...f, skills: [...f.skills, { name: '', description: '', enabled: true }] }))}><Plus className="h-3.5 w-3.5" /> Add skill</button>
               </div>
-              <div>
-                <label className="label">Workspace Markdown</label>
-                <textarea className="input min-h-[140px] font-mono text-xs" value={form.workspaceText} onChange={(e) => setForm((f) => ({ ...f, workspaceText: e.target.value }))} placeholder="# README.md" />
+              <div className="mt-3 space-y-2">
+                {form.skills.map((skill, index) => (
+                  <div key={index} className="grid grid-cols-[1fr_2fr_auto_auto] gap-2">
+                    <input className="input text-xs" value={skill.name} onChange={(e) => updateSkill(index, { name: e.target.value })} placeholder="browser" />
+                    <input className="input text-xs" value={skill.description ?? ''} onChange={(e) => updateSkill(index, { description: e.target.value })} placeholder="Skill behavior and trigger" />
+                    <label className="flex items-center gap-1 text-xs text-gray-500"><input type="checkbox" checked={skill.enabled !== false} onChange={(e) => updateSkill(index, { enabled: e.target.checked })} /> Enabled</label>
+                    <button type="button" className="text-gray-400 hover:text-red-500" onClick={() => setForm((f) => ({ ...f, skills: f.skills.filter((_, i) => i !== index) }))}><Trash2 className="h-4 w-4" /></button>
+                  </div>
+                ))}
               </div>
-              <div>
-                <label className="label">Knowledge base</label>
-                <textarea className="input min-h-[140px] text-xs" value={form.knowledgeText} onChange={(e) => setForm((f) => ({ ...f, knowledgeText: e.target.value }))} placeholder="Separate knowledge blocks with blank lines." />
+            </div>
+
+            <div className="rounded-lg border border-gray-200 p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-medium text-gray-900">Workspace files</h3>
+                  <p className="text-xs text-gray-400">Generated into the isolated OpenClaw workspace. Use AGENTS.md, SOUL.md, TOOLS.md, docs/*.md as needed.</p>
+                </div>
+                <button type="button" className="btn-secondary text-xs" onClick={() => setForm((f) => ({ ...f, workspace: [...f.workspace, { path: 'docs/new.md', content: '' }] }))}><Plus className="h-3.5 w-3.5" /> Add file</button>
+              </div>
+              <div className="mt-3 space-y-3">
+                {form.workspace.map((file, index) => (
+                  <div key={index} className="rounded bg-gray-50 p-3">
+                    <div className="mb-2 flex gap-2">
+                      <input className="input font-mono text-xs" value={file.path} onChange={(e) => updateWorkspace(index, { path: e.target.value })} placeholder="AGENTS.md" />
+                      <button type="button" className="text-gray-400 hover:text-red-500" onClick={() => setForm((f) => ({ ...f, workspace: f.workspace.filter((_, i) => i !== index) }))}><Trash2 className="h-4 w-4" /></button>
+                    </div>
+                    <textarea className="input min-h-[120px] font-mono text-xs" value={file.content} onChange={(e) => updateWorkspace(index, { content: e.target.value })} placeholder="# Instructions" />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-gray-200 p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-medium text-gray-900">Knowledge base</h3>
+                  <p className="text-xs text-gray-400">Small knowledge is materialized into docs/knowledge.md. Large RAG indexing is planned for the next phase.</p>
+                </div>
+                <button type="button" className="btn-secondary text-xs" onClick={() => setForm((f) => ({ ...f, knowledgeBase: [...f.knowledgeBase, { title: 'New knowledge', content: '' }] }))}><Plus className="h-3.5 w-3.5" /> Add knowledge</button>
+              </div>
+              <div className="mt-3 space-y-3">
+                {form.knowledgeBase.map((item, index) => (
+                  <div key={index} className="rounded bg-gray-50 p-3">
+                    <div className="mb-2 flex gap-2">
+                      <input className="input text-xs" value={item.title} onChange={(e) => updateKnowledge(index, { title: e.target.value })} placeholder="Policy" />
+                      <button type="button" className="text-gray-400 hover:text-red-500" onClick={() => setForm((f) => ({ ...f, knowledgeBase: f.knowledgeBase.filter((_, i) => i !== index) }))}><Trash2 className="h-4 w-4" /></button>
+                    </div>
+                    <textarea className="input min-h-[100px] text-xs" value={item.content} onChange={(e) => updateKnowledge(index, { content: e.target.value })} placeholder="Knowledge content" />
+                  </div>
+                ))}
               </div>
             </div>
 

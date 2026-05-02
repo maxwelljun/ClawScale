@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Loader2, Plus, Pencil, Save, Trash2, X, KeyRound, RefreshCw, FlaskConical, Play } from 'lucide-react';
 import { api } from '@/lib/api';
 import { getUser } from '@/lib/auth';
-import type { ApiResponse, ModelProvider, ModelProviderType } from '@clawscale/shared';
+import type { ApiResponse, ModelProvider, ModelProviderApi, ModelProviderType } from '@clawscale/shared';
 import { MODEL_PROVIDER_DESCRIPTORS, MODEL_PROVIDER_TYPES } from '@clawscale/shared';
 
 type ModelRow = Omit<ModelProvider, 'apiKey'> & { apiKeySet?: boolean };
@@ -12,6 +12,7 @@ type ModelForm = {
   provider: ModelProviderType;
   baseUrl: string;
   apiKey: string;
+  api: ModelProviderApi;
   modelsText: string;
   isActive: boolean;
 };
@@ -21,9 +22,15 @@ const emptyForm: ModelForm = {
   provider: 'openai',
   baseUrl: MODEL_PROVIDER_DESCRIPTORS.openai.defaultBaseUrl ?? '',
   apiKey: '',
+  api: MODEL_PROVIDER_DESCRIPTORS.openai.defaultApi ?? 'openai-completions',
   modelsText: '',
   isActive: true,
 };
+
+const MODEL_PROVIDER_API_OPTIONS: Array<{ value: ModelProviderApi; label: string; hint: string }> = [
+  { value: 'openai-completions', label: 'OpenAI Chat Completions', hint: '/chat/completions compatible providers' },
+  { value: 'anthropic-messages', label: 'Anthropic Messages', hint: '/v1/messages compatible providers' },
+];
 
 export default function Models() {
   const isAdmin = getUser()?.role === 'admin';
@@ -59,6 +66,7 @@ export default function Models() {
       provider: row.provider as ModelProviderType,
       baseUrl: row.baseUrl ?? '',
       apiKey: '',
+      api: (row.config?.api === 'anthropic-messages' ? 'anthropic-messages' : 'openai-completions'),
       modelsText: (row.models ?? []).join('\n'),
       isActive: row.isActive,
     });
@@ -72,6 +80,7 @@ export default function Models() {
       ...f,
       provider,
       baseUrl: descriptor.defaultBaseUrl ?? f.baseUrl,
+      api: descriptor.defaultApi ?? f.api,
       modelsText: f.modelsText || descriptor.modelPlaceholder,
     }));
   }
@@ -88,7 +97,7 @@ export default function Models() {
         ...(form.apiKey ? { apiKey: form.apiKey } : {}),
         models: form.modelsText.split('\n').map((m) => m.trim()).filter(Boolean),
         isActive: form.isActive,
-        config: {},
+        config: { api: form.api },
       };
       const res = editingId
         ? await api.patch<ApiResponse<ModelRow>>(`/api/models/${editingId}`, payload)
@@ -173,6 +182,13 @@ export default function Models() {
               <input className="input font-mono text-xs" value={form.baseUrl} onChange={(e) => setForm((f) => ({ ...f, baseUrl: e.target.value }))} placeholder={MODEL_PROVIDER_DESCRIPTORS[form.provider].defaultBaseUrl ?? 'https://api.example.com/v1'} />
             </div>
             <div>
+              <label className="label">API compatibility</label>
+              <select className="input" value={form.api} onChange={(e) => setForm((f) => ({ ...f, api: e.target.value as ModelProviderApi }))}>
+                {MODEL_PROVIDER_API_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+              <p className="text-xs text-gray-400 mt-1">{MODEL_PROVIDER_API_OPTIONS.find((option) => option.value === form.api)?.hint}</p>
+            </div>
+            <div>
               <label className="label">{MODEL_PROVIDER_DESCRIPTORS[form.provider].authLabel}</label>
               <input className="input font-mono text-xs" type="password" value={form.apiKey} onChange={(e) => setForm((f) => ({ ...f, apiKey: e.target.value }))} placeholder={editingId ? 'Leave blank to keep existing key' : 'sk-...'} />
             </div>
@@ -219,6 +235,7 @@ export default function Models() {
                     {!row.isActive && <span className="badge-gray">inactive</span>}
                   </div>
                   <p className="text-sm text-gray-500 mt-1">{MODEL_PROVIDER_DESCRIPTORS[row.provider as ModelProviderType]?.label ?? row.provider}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{row.config?.api === 'anthropic-messages' ? 'Anthropic Messages' : 'OpenAI Chat Completions'}</p>
                 </div>
                 {isAdmin && (
                   <div className="flex items-center gap-1">

@@ -7,6 +7,7 @@ import { generateId } from '../lib/id.js';
 import { audit } from '../lib/audit.js';
 
 const PROVIDERS = ['openai', 'anthropic', 'minimax', 'google', 'mistral', 'deepseek', 'openrouter', 'ollama', 'xai', 'custom'] as const;
+const PROVIDER_APIS = ['openai-completions', 'anthropic-messages'] as const;
 
 const modelProviderSchema = z.object({
   name: z.string().min(1).max(80),
@@ -14,7 +15,9 @@ const modelProviderSchema = z.object({
   baseUrl: z.string().url().optional().or(z.literal('')),
   apiKey: z.string().optional(),
   models: z.array(z.string().min(1).max(120)).default([]),
-  config: z.record(z.unknown()).default({}),
+  config: z.object({
+    api: z.enum(PROVIDER_APIS).optional(),
+  }).catchall(z.unknown()).default({}),
   isActive: z.boolean().default(true),
 });
 
@@ -51,8 +54,16 @@ function providerBaseUrl(row: { provider: string; baseUrl?: string | null }): st
   return (row.baseUrl || defaultBaseUrl(row.provider)).replace(/\/$/, '');
 }
 
-function providerHeaders(row: { provider: string; apiKey?: string | null }): Record<string, string> {
-  if (row.provider === 'anthropic') {
+function providerApi(row: { provider: string; config?: unknown }): typeof PROVIDER_APIS[number] {
+  if (row.config && typeof row.config === 'object') {
+    const api = (row.config as Record<string, unknown>).api;
+    if (api === 'anthropic-messages' || api === 'openai-completions') return api;
+  }
+  return row.provider === 'anthropic' ? 'anthropic-messages' : 'openai-completions';
+}
+
+function providerHeaders(row: { provider: string; apiKey?: string | null; config?: unknown }): Record<string, string> {
+  if (providerApi(row) === 'anthropic-messages') {
     return {
       'Content-Type': 'application/json',
       ...(row.apiKey ? { 'x-api-key': row.apiKey } : {}),
@@ -65,10 +76,15 @@ function providerHeaders(row: { provider: string; apiKey?: string | null }): Rec
   };
 }
 
-async function fetchModelIds(row: { provider: string; baseUrl?: string | null; apiKey?: string | null }): Promise<string[]> {
+function anthropicUrl(baseUrl: string, path: string): string {
+  return baseUrl.endsWith('/v1') ? `${baseUrl}${path}` : `${baseUrl}/v1${path}`;
+}
+
+async function fetchModelIds(row: { provider: string; baseUrl?: string | null; apiKey?: string | null; config?: unknown }): Promise<string[]> {
   const baseUrl = providerBaseUrl(row);
   if (!baseUrl) throw new Error('Base URL is required for this provider');
-  const res = await fetch(`${baseUrl}/models`, {
+  const url = providerApi(row) === 'anthropic-messages' ? anthropicUrl(baseUrl, '/models') : `${baseUrl}/models`;
+  const res = await fetch(url, {
     headers: providerHeaders(row),
     signal: AbortSignal.timeout(30_000),
   });
@@ -159,8 +175,8 @@ modelsRouter.post('/:id/run', requireAdmin, validate(runSchema), async (req, res
   try {
     const startedAt = Date.now();
     let reply = '';
-    if (row.provider === 'anthropic') {
-      const response = await fetch(`${providerBaseUrl(row)}/v1/messages`, {
+    if (providerApi(row) === 'anthropic-messages') {
+      const response = await fetch(anthropicUrl(providerBaseUrl(row), '/messages'), {
         method: 'POST',
         headers: providerHeaders(row),
         body: JSON.stringify({ model, max_tokens: 128, messages: [{ role: 'user', content: body.prompt }] }),

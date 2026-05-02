@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BotMessageSquare, Loader2, Play, RotateCw, Square, RefreshCw } from 'lucide-react';
+import { BotMessageSquare, Loader2, Play, RotateCw, Square, RefreshCw, Settings, FileText, Terminal, MoreHorizontal, X, Send } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { ApiResponse } from '@clawscale/shared';
 
@@ -18,6 +18,15 @@ type AgentInstance = {
   lastMessageAt: string;
   lastLatencyMs: number | null;
 };
+type AgentTab = 'config' | 'logs' | 'terminal' | 'more';
+type ConfigPayload = {
+  identity: Record<string, string> | null;
+  dirs: { stateDir: string; workspaceDir: string } | null;
+  inspect: unknown;
+  openclawConfig: unknown;
+  manifest: unknown;
+  version: unknown;
+};
 
 const statusClass: Record<string, string> = {
   running: 'badge-green',
@@ -31,6 +40,13 @@ export default function Agents() {
   const [rows, setRows] = useState<AgentInstance[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionId, setActionId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<AgentInstance | null>(null);
+  const [tab, setTab] = useState<AgentTab>('config');
+  const [config, setConfig] = useState<ConfigPayload | null>(null);
+  const [logs, setLogs] = useState('');
+  const [terminalCommand, setTerminalCommand] = useState('pwd && ls -la /home/node/.openclaw/workspace');
+  const [terminalOutput, setTerminalOutput] = useState('');
+  const [panelLoading, setPanelLoading] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -48,6 +64,46 @@ export default function Agents() {
       await load();
     } finally {
       setActionId(null);
+    }
+  }
+
+  async function openPanel(row: AgentInstance, nextTab: AgentTab) {
+    setSelected(row);
+    setTab(nextTab);
+    setConfig(null);
+    setLogs('');
+    setTerminalOutput('');
+    await loadPanel(row.containerName, nextTab);
+  }
+
+  async function loadPanel(containerName: string, currentTab = tab) {
+    setPanelLoading(true);
+    try {
+      if (currentTab === 'config') {
+        const res = await api.get<ApiResponse<ConfigPayload>>(`/api/agent-instances/${containerName}/config`);
+        if (res.ok) setConfig(res.data);
+      } else if (currentTab === 'logs') {
+        const res = await api.get<ApiResponse<{ logs: string }>>(`/api/agent-instances/${containerName}/logs?tail=300`);
+        if (res.ok) setLogs(res.data.logs);
+      }
+    } finally {
+      setPanelLoading(false);
+    }
+  }
+
+  async function switchTab(nextTab: AgentTab) {
+    setTab(nextTab);
+    if (selected) await loadPanel(selected.containerName, nextTab);
+  }
+
+  async function runTerminalCommand() {
+    if (!selected) return;
+    setPanelLoading(true);
+    try {
+      const res = await api.post<ApiResponse<{ output: string }>>(`/api/agent-instances/${selected.containerName}/exec`, { command: terminalCommand });
+      setTerminalOutput(res.ok ? res.data.output : res.error);
+    } finally {
+      setPanelLoading(false);
     }
   }
 
@@ -93,6 +149,18 @@ export default function Agents() {
                     <p className="text-xs text-gray-400 mt-1 font-mono truncate">{row.containerName}</p>
                   </div>
                   <div className="flex items-center gap-2">
+                    <button className="btn-secondary text-xs" onClick={() => openPanel(row, 'config')}>
+                      <Settings className="h-3.5 w-3.5" /> Config
+                    </button>
+                    <button className="btn-secondary text-xs" onClick={() => openPanel(row, 'logs')}>
+                      <FileText className="h-3.5 w-3.5" /> Logs
+                    </button>
+                    <button className="btn-secondary text-xs" onClick={() => openPanel(row, 'terminal')} disabled={!row.runtime?.running}>
+                      <Terminal className="h-3.5 w-3.5" /> Terminal
+                    </button>
+                    <button className="btn-secondary text-xs" onClick={() => openPanel(row, 'more')}>
+                      <MoreHorizontal className="h-3.5 w-3.5" /> More
+                    </button>
                     <button className="btn-secondary text-xs" onClick={() => runtimeAction(row.containerName, 'start')} disabled={busy || row.runtime?.running === true}>
                       {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />} Start
                     </button>
@@ -116,6 +184,116 @@ export default function Agents() {
           })}
         </div>
       )}
+      {selected && (
+        <div className="fixed inset-0 z-50 flex justify-end bg-black/40">
+          <div className="h-full w-full max-w-5xl overflow-y-auto bg-white shadow-2xl">
+            <div className="sticky top-0 z-10 border-b border-gray-200 bg-white px-6 py-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900">{selected.backend?.name ?? 'Runtime agent'}</h2>
+                  <p className="mt-1 font-mono text-xs text-gray-400">{selected.containerName}</p>
+                </div>
+                <button className="text-gray-400 hover:text-gray-600" onClick={() => setSelected(null)}><X className="h-5 w-5" /></button>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <TabButton active={tab === 'config'} onClick={() => void switchTab('config')} icon={Settings} label="Config" />
+                <TabButton active={tab === 'logs'} onClick={() => void switchTab('logs')} icon={FileText} label="Logs" />
+                <TabButton active={tab === 'terminal'} onClick={() => void switchTab('terminal')} icon={Terminal} label="Terminal" />
+                <TabButton active={tab === 'more'} onClick={() => void switchTab('more')} icon={MoreHorizontal} label="More" />
+              </div>
+            </div>
+            <div className="p-6">
+              {panelLoading && <div className="mb-4 flex items-center gap-2 text-sm text-gray-500"><Loader2 className="h-4 w-4 animate-spin" /> Loading</div>}
+              {tab === 'config' && (
+                <div className="space-y-4">
+                  <InfoGrid selected={selected} />
+                  <JsonBlock title="ClawBot manifest" value={config?.manifest} />
+                  <JsonBlock title="OpenClaw config" value={config?.openclawConfig} />
+                  <JsonBlock title="Docker inspect" value={config?.inspect} />
+                </div>
+              )}
+              {tab === 'logs' && (
+                <div className="space-y-3">
+                  <div className="flex justify-end">
+                    <button className="btn-secondary text-xs" onClick={() => selected && loadPanel(selected.containerName, 'logs')}><RefreshCw className="h-3.5 w-3.5" /> Refresh logs</button>
+                  </div>
+                  <pre className="min-h-[520px] overflow-auto rounded-lg bg-gray-950 p-4 text-xs leading-relaxed text-gray-100">{logs || 'No logs returned.'}</pre>
+                </div>
+              )}
+              {tab === 'terminal' && (
+                <div className="space-y-3">
+                  <div className="flex gap-2">
+                    <input className="input font-mono text-xs" value={terminalCommand} onChange={(e) => setTerminalCommand(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void runTerminalCommand(); }} />
+                    <button className="btn-primary" onClick={() => void runTerminalCommand()} disabled={!selected.runtime?.running || panelLoading}>
+                      <Send className="h-4 w-4" /> Run
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-400">Runs inside the selected OpenClaw container as a short-lived command.</p>
+                  <pre className="min-h-[420px] overflow-auto rounded-lg bg-gray-950 p-4 text-xs leading-relaxed text-gray-100">{terminalOutput || 'Command output will appear here.'}</pre>
+                </div>
+              )}
+              {tab === 'more' && (
+                <div className="space-y-5">
+                  <InfoGrid selected={selected} />
+                  <div className="rounded-lg border border-gray-200 p-4">
+                    <h3 className="font-medium text-gray-900">Runtime actions</h3>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button className="btn-secondary text-xs" onClick={() => runtimeAction(selected.containerName, 'start')} disabled={selected.runtime?.running === true}><Play className="h-3.5 w-3.5" /> Start</button>
+                      <button className="btn-secondary text-xs" onClick={() => runtimeAction(selected.containerName, 'restart')} disabled={!selected.runtime}><RotateCw className="h-3.5 w-3.5" /> Restart</button>
+                      <button className="btn-secondary text-xs" onClick={() => runtimeAction(selected.containerName, 'stop')} disabled={selected.runtime?.running !== true}><Square className="h-3.5 w-3.5" /> Stop</button>
+                    </div>
+                  </div>
+                  <JsonBlock title="Version" value={config?.version ?? selected.agentTemplateVersion} />
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TabButton({ active, onClick, icon: Icon, label }: { active: boolean; onClick: () => void; icon: typeof Settings; label: string }) {
+  return (
+    <button
+      className={active ? 'btn-primary text-xs' : 'btn-secondary text-xs'}
+      onClick={onClick}
+    >
+      <Icon className="h-3.5 w-3.5" /> {label}
+    </button>
+  );
+}
+
+function InfoGrid({ selected }: { selected: AgentInstance }) {
+  return (
+    <div className="grid grid-cols-2 gap-3 text-xs lg:grid-cols-4">
+      <Info label="Channel" value={`${selected.channel.name} · ${selected.channel.type}`} />
+      <Info label="End user" value={selected.endUser.name ?? selected.endUser.externalId} />
+      <Info label="Model" value={selected.modelProvider?.name ?? 'default'} />
+      <Info label="Template version" value={selected.agentTemplateVersion ? `v${selected.agentTemplateVersion.version}` : 'draft'} />
+      <Info label="State dir" value={selected.stateDir} mono />
+      <Info label="Workspace dir" value={selected.workspaceDir} mono />
+      <Info label="Conversation" value={selected.conversationId} mono />
+      <Info label="Status" value={`${selected.runtime?.status ?? 'missing'}${selected.runtime?.health ? ` · ${selected.runtime.health}` : ''}`} />
+    </div>
+  );
+}
+
+function Info({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="rounded bg-gray-50 p-3">
+      <p className="text-gray-400">{label}</p>
+      <p className={`mt-1 truncate text-gray-700 ${mono ? 'font-mono' : ''}`}>{value}</p>
+    </div>
+  );
+}
+
+function JsonBlock({ title, value }: { title: string; value: unknown }) {
+  return (
+    <div>
+      <h3 className="mb-2 font-medium text-gray-900">{title}</h3>
+      <pre className="max-h-[520px] overflow-auto rounded-lg bg-gray-950 p-4 text-xs leading-relaxed text-gray-100">{JSON.stringify(value ?? null, null, 2)}</pre>
     </div>
   );
 }

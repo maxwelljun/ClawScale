@@ -99,25 +99,28 @@ export type ModelProviderType =
   | 'xai'
   | 'custom';
 
+export type ModelProviderApi = 'openai-completions' | 'anthropic-messages';
+
 export interface ModelProviderDescriptor {
   type: ModelProviderType;
   label: string;
   defaultBaseUrl?: string;
   modelPlaceholder: string;
   authLabel: string;
+  defaultApi?: ModelProviderApi;
 }
 
 export const MODEL_PROVIDER_DESCRIPTORS: Record<ModelProviderType, ModelProviderDescriptor> = {
-  openai: { type: 'openai', label: 'OpenAI', defaultBaseUrl: 'https://api.openai.com/v1', modelPlaceholder: 'gpt-5.4-mini', authLabel: 'API Key' },
-  anthropic: { type: 'anthropic', label: 'Anthropic', defaultBaseUrl: 'https://api.anthropic.com', modelPlaceholder: 'claude-sonnet-4-6', authLabel: 'API Key' },
-  minimax: { type: 'minimax', label: 'MiniMax', defaultBaseUrl: 'https://api.minimaxi.com/v1', modelPlaceholder: 'MiniMax-M2.7-highspeed', authLabel: 'API Key' },
-  google: { type: 'google', label: 'Google Gemini', defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', modelPlaceholder: 'gemini-2.5-pro', authLabel: 'API Key' },
-  mistral: { type: 'mistral', label: 'Mistral', defaultBaseUrl: 'https://api.mistral.ai/v1', modelPlaceholder: 'mistral-large-latest', authLabel: 'API Key' },
-  deepseek: { type: 'deepseek', label: 'DeepSeek', defaultBaseUrl: 'https://api.deepseek.com', modelPlaceholder: 'deepseek-chat', authLabel: 'API Key' },
-  openrouter: { type: 'openrouter', label: 'OpenRouter', defaultBaseUrl: 'https://openrouter.ai/api/v1', modelPlaceholder: 'openai/gpt-4o', authLabel: 'API Key' },
-  ollama: { type: 'ollama', label: 'Ollama', defaultBaseUrl: 'http://localhost:11434/v1', modelPlaceholder: 'llama3.1', authLabel: 'Optional API Key' },
-  xai: { type: 'xai', label: 'xAI', defaultBaseUrl: 'https://api.x.ai/v1', modelPlaceholder: 'grok-4', authLabel: 'API Key' },
-  custom: { type: 'custom', label: 'Custom OpenAI-compatible', modelPlaceholder: 'provider/model-name', authLabel: 'API Key' },
+  openai: { type: 'openai', label: 'OpenAI', defaultBaseUrl: 'https://api.openai.com/v1', modelPlaceholder: 'gpt-5.4-mini', authLabel: 'API Key', defaultApi: 'openai-completions' },
+  anthropic: { type: 'anthropic', label: 'Anthropic', defaultBaseUrl: 'https://api.anthropic.com', modelPlaceholder: 'claude-sonnet-4-6', authLabel: 'API Key', defaultApi: 'anthropic-messages' },
+  minimax: { type: 'minimax', label: 'MiniMax', defaultBaseUrl: 'https://api.minimaxi.com/v1', modelPlaceholder: 'MiniMax-M2.7-highspeed', authLabel: 'API Key', defaultApi: 'openai-completions' },
+  google: { type: 'google', label: 'Google Gemini', defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', modelPlaceholder: 'gemini-2.5-pro', authLabel: 'API Key', defaultApi: 'openai-completions' },
+  mistral: { type: 'mistral', label: 'Mistral', defaultBaseUrl: 'https://api.mistral.ai/v1', modelPlaceholder: 'mistral-large-latest', authLabel: 'API Key', defaultApi: 'openai-completions' },
+  deepseek: { type: 'deepseek', label: 'DeepSeek', defaultBaseUrl: 'https://api.deepseek.com', modelPlaceholder: 'deepseek-chat', authLabel: 'API Key', defaultApi: 'openai-completions' },
+  openrouter: { type: 'openrouter', label: 'OpenRouter', defaultBaseUrl: 'https://openrouter.ai/api/v1', modelPlaceholder: 'openai/gpt-4o', authLabel: 'API Key', defaultApi: 'openai-completions' },
+  ollama: { type: 'ollama', label: 'Ollama', defaultBaseUrl: 'http://localhost:11434/v1', modelPlaceholder: 'llama3.1', authLabel: 'Optional API Key', defaultApi: 'openai-completions' },
+  xai: { type: 'xai', label: 'xAI', defaultBaseUrl: 'https://api.x.ai/v1', modelPlaceholder: 'grok-4', authLabel: 'API Key', defaultApi: 'openai-completions' },
+  custom: { type: 'custom', label: 'Custom Provider', modelPlaceholder: 'provider/model-name', authLabel: 'API Key', defaultApi: 'openai-completions' },
 };
 
 export const MODEL_PROVIDER_TYPES = Object.keys(MODEL_PROVIDER_DESCRIPTORS) as ModelProviderType[];

@@ -779,6 +779,7 @@ async function runBackend(
       baseUrl: string | null;
       apiKey: string | null;
       models: unknown;
+      config?: unknown;
     } | null;
     skills?: unknown;
     workspace?: unknown;
@@ -873,6 +874,7 @@ async function applyAgentTemplateVersion<T extends {
     baseUrl: string | null;
     apiKey: string | null;
     models: unknown;
+    config?: unknown;
   } | null;
   config: unknown;
   skills?: unknown;
@@ -932,10 +934,18 @@ function buildOpenClawTemplate(backend: {
       baseUrl: backend.modelProvider.baseUrl,
       apiKey: backend.modelProvider.apiKey,
       model,
-      api: 'openai-completions',
+      api: readModelProviderApi(backend.modelProvider),
     } : null,
     skills: readJsonArray(backend.skills),
     workspace: readJsonArray(backend.workspace),
     knowledgeBase: readJsonArray(backend.knowledgeBase),
   };
+}
+
+function readModelProviderApi(provider?: { provider: string; config?: unknown } | null): string {
+  if (provider?.config && typeof provider.config === 'object') {
+    const api = (provider.config as Record<string, unknown>).api;
+    if (api === 'anthropic-messages' || api === 'openai-completions') return api;
+  }
+  return provider?.provider === 'anthropic' ? 'anthropic-messages' : 'openai-completions';
 }

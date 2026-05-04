@@ -1,5 +1,5 @@
 FROM node:22-alpine
-RUN apk add --no-cache docker-cli
+RUN apk add --no-cache docker-cli git
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
 WORKDIR /app

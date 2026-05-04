@@ -356,39 +356,6 @@ function parseGitHubTreeSource(value: string): GitHubTreeSource | null {
   };
 }
 
-function isWithinSource(blobPath: string, sourcePath: string): boolean {
-  const normalized = sourcePath.replace(/^\/+|\/+$/g, '');
-  return !normalized || blobPath === normalized || blobPath.startsWith(`${normalized}/`);
-}
-
-function relativeFromSource(blobPath: string, sourcePath: string): string {
-  const normalized = sourcePath.replace(/^\/+|\/+$/g, '');
-  return normalized ? blobPath.slice(normalized.length).replace(/^\/+/, '') : blobPath;
-}
-
-function rawGitHubUrl(source: GitHubTreeSource, blobPath: string): string {
-  const encodedPath = blobPath.split('/').map((part) => encodeURIComponent(part)).join('/');
-  return `https://raw.githubusercontent.com/${source.owner}/${source.repo}/${encodeURIComponent(source.branch)}/${encodedPath}`;
-}
-
-async function fetchJson<T>(url: string): Promise<T> {
-  const res = await fetch(url, {
-    headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'ClawScale' },
-    signal: AbortSignal.timeout(30_000),
-  });
-  if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status} ${await res.text()}`);
-  return await res.json() as T;
-}
-
-async function fetchText(url: string): Promise<string> {
-  const res = await fetch(url, {
-    headers: { 'User-Agent': 'ClawScale' },
-    signal: AbortSignal.timeout(30_000),
-  });
-  if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status} ${await res.text()}`);
-  return await res.text();
-}
-
 async function syncGitHubSource(
   workspaceDir: string,
   sourceUrl: string,
@@ -397,27 +364,78 @@ async function syncGitHubSource(
   const parsed = parseGitHubTreeSource(sourceUrl);
   if (!parsed) throw new Error(`Unsupported source URL: ${sourceUrl}`);
   const sourcePath = mode === 'skills' && !parsed.sourcePath ? 'skills' : parsed.sourcePath;
-  const tree = await fetchJson<{ tree?: Array<{ path: string; type: string; size?: number }> }>(
-    `https://api.github.com/repos/${parsed.owner}/${parsed.repo}/git/trees/${encodeURIComponent(parsed.branch)}?recursive=1`,
-  );
-  const files = (tree.tree ?? [])
-    .filter((item) => item.type === 'blob' && isWithinSource(item.path, sourcePath))
-    .slice(0, 300);
+  const repoDir = await ensureGitHubSourceCache(parsed, sourcePath);
+  const sourceRoot = path.join(repoDir, sourcePath);
+  const files = await listFiles(sourceRoot);
   const written: string[] = [];
   for (const file of files) {
-    if ((file.size ?? 0) > 1024 * 1024) continue;
-    const relative = safeRelativePath(relativeFromSource(file.path, sourcePath));
+    const stat = await fs.stat(file);
+    if (stat.size > 1024 * 1024) continue;
+    const relative = safeRelativePath(path.relative(sourceRoot, file));
     if (!relative) continue;
     const targetRelative = mode === 'skills'
       ? path.posix.join('skills', sourcePath && sourcePath !== 'skills' ? path.posix.basename(sourcePath) : '', relative)
       : relative;
     const target = path.join(workspaceDir, safeRelativePath(targetRelative));
-    const content = await fetchText(rawGitHubUrl(parsed, file.path));
     await fs.mkdir(path.dirname(target), { recursive: true });
-    await fs.writeFile(target, content);
+    await fs.copyFile(file, target);
     written.push(targetRelative);
   }
   return written;
+}
+
+async function ensureGitHubSourceCache(source: GitHubTreeSource, sourcePath: string): Promise<string> {
+  const cacheDir = path.resolve(OPENCLAW_DATA_DIR, 'cache', 'sources', shortHash([
+    source.owner,
+    source.repo,
+    source.branch,
+    sourcePath,
+  ].join(':')));
+  const repoDir = path.join(cacheDir, 'repo');
+  try {
+    await fs.access(path.join(repoDir, '.git'));
+    return repoDir;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+
+  await fs.rm(cacheDir, { recursive: true, force: true });
+  await fs.mkdir(cacheDir, { recursive: true });
+  const repoUrl = `https://github.com/${source.owner}/${source.repo}.git`;
+  await execFileAsync('git', ['clone', '--depth', '1', '--branch', source.branch, '--filter=blob:none', '--sparse', repoUrl, repoDir], {
+    maxBuffer: 1024 * 1024,
+    timeout: DOCKER_TIMEOUT_MS,
+  });
+  const sparsePath = sourcePath.replace(/^\/+|\/+$/g, '');
+  if (sparsePath) {
+    await execFileAsync('git', ['-C', repoDir, 'sparse-checkout', 'set', sparsePath], {
+      maxBuffer: 1024 * 1024,
+      timeout: DOCKER_TIMEOUT_MS,
+    });
+  }
+  return repoDir;
+}
+
+async function listFiles(root: string): Promise<string[]> {
+  let entries;
+  try {
+    entries = await fs.readdir(root, { withFileTypes: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw error;
+  }
+
+  const files: string[] = [];
+  for (const entry of entries) {
+    if (entry.name === '.git') continue;
+    const entryPath = path.join(root, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...await listFiles(entryPath));
+    } else if (entry.isFile()) {
+      files.push(entryPath);
+    }
+  }
+  return files;
 }
 
 async function writeTemplateWorkspace(workspaceDir: string, template?: OpenClawRuntimeTemplate): Promise<void> {

@@ -884,6 +884,23 @@ function readJsonArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? value as T[] : [];
 }
 
+function readStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0).map((item) => item.trim())
+    : [];
+}
+
+function readStringRecord(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const result: Record<string, string> = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) && typeof item === 'string') {
+      result[key] = item;
+    }
+  }
+  return result;
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error ?? '');
 }
@@ -971,6 +988,9 @@ function buildOpenClawTemplate(backend: {
     } : null,
     workspace: readJsonArray(backend.workspace),
     knowledgeBase: readJsonArray(backend.knowledgeBase),
+    workspaceSources: readStringArray(cfg.workspaceSources),
+    skillSources: readStringArray(cfg.skillSources),
+    secretEnv: readStringRecord(cfg.secretEnv),
   };
 }
 

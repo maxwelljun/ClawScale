@@ -16,6 +16,7 @@ export interface OpenClawRuntimeIdentity {
 
 interface DockerInspect {
   State?: { Running?: boolean };
+  Config?: { Labels?: Record<string, string> | null };
   NetworkSettings?: {
     Ports?: Record<string, Array<{ HostIp?: string; HostPort?: string }> | null>;
     Networks?: Record<string, unknown>;
@@ -44,6 +45,9 @@ export interface OpenClawRuntimeTemplate {
   } | null;
   workspace?: Array<{ path: string; content: string }>;
   knowledgeBase?: Array<{ title: string; content: string }>;
+  workspaceSources?: string[];
+  skillSources?: string[];
+  secretEnv?: Record<string, string>;
 }
 
 const OPENCLAW_IMAGE = process.env.OPENCLAW_IMAGE ?? '1panel/openclaw:latest';
@@ -295,6 +299,127 @@ function safeRelativePath(value: string): string {
   return normalized;
 }
 
+function cleanSourceList(value?: string[]): string[] {
+  return Array.isArray(value) ? value.map((item) => item.trim()).filter(Boolean) : [];
+}
+
+function cleanSecretEnv(value?: Record<string, string>): Record<string, string> {
+  const result: Record<string, string> = {};
+  if (!value) return result;
+  for (const [key, item] of Object.entries(value)) {
+    if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) && typeof item === 'string') {
+      result[key] = item;
+    }
+  }
+  return result;
+}
+
+function stableJson(value: unknown): string {
+  if (!isObject(value)) return JSON.stringify(value);
+  return JSON.stringify(Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b))));
+}
+
+function templateSecretHash(template?: OpenClawRuntimeTemplate): string {
+  return shortHash(stableJson(cleanSecretEnv(template?.secretEnv)));
+}
+
+interface GitHubTreeSource {
+  owner: string;
+  repo: string;
+  branch: string;
+  sourcePath: string;
+}
+
+function parseGitHubTreeSource(value: string): GitHubTreeSource | null {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return null;
+  }
+  if (url.hostname !== 'github.com') return null;
+  const parts = url.pathname.split('/').filter(Boolean);
+  if (parts.length < 2) return null;
+  const [owner, repo] = parts;
+  if (!owner || !repo) return null;
+  const treeIndex = parts.indexOf('tree');
+  if (treeIndex === -1) {
+    return { owner, repo, branch: 'main', sourcePath: '' };
+  }
+  const branch = parts[treeIndex + 1];
+  if (!branch) return null;
+  return {
+    owner,
+    repo,
+    branch,
+    sourcePath: parts.slice(treeIndex + 2).join('/'),
+  };
+}
+
+function isWithinSource(blobPath: string, sourcePath: string): boolean {
+  const normalized = sourcePath.replace(/^\/+|\/+$/g, '');
+  return !normalized || blobPath === normalized || blobPath.startsWith(`${normalized}/`);
+}
+
+function relativeFromSource(blobPath: string, sourcePath: string): string {
+  const normalized = sourcePath.replace(/^\/+|\/+$/g, '');
+  return normalized ? blobPath.slice(normalized.length).replace(/^\/+/, '') : blobPath;
+}
+
+function rawGitHubUrl(source: GitHubTreeSource, blobPath: string): string {
+  const encodedPath = blobPath.split('/').map((part) => encodeURIComponent(part)).join('/');
+  return `https://raw.githubusercontent.com/${source.owner}/${source.repo}/${encodeURIComponent(source.branch)}/${encodedPath}`;
+}
+
+async function fetchJson<T>(url: string): Promise<T> {
+  const res = await fetch(url, {
+    headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'ClawScale' },
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status} ${await res.text()}`);
+  return await res.json() as T;
+}
+
+async function fetchText(url: string): Promise<string> {
+  const res = await fetch(url, {
+    headers: { 'User-Agent': 'ClawScale' },
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status} ${await res.text()}`);
+  return await res.text();
+}
+
+async function syncGitHubSource(
+  workspaceDir: string,
+  sourceUrl: string,
+  mode: 'workspace' | 'skills',
+): Promise<string[]> {
+  const parsed = parseGitHubTreeSource(sourceUrl);
+  if (!parsed) throw new Error(`Unsupported source URL: ${sourceUrl}`);
+  const sourcePath = mode === 'skills' && !parsed.sourcePath ? 'skills' : parsed.sourcePath;
+  const tree = await fetchJson<{ tree?: Array<{ path: string; type: string; size?: number }> }>(
+    `https://api.github.com/repos/${parsed.owner}/${parsed.repo}/git/trees/${encodeURIComponent(parsed.branch)}?recursive=1`,
+  );
+  const files = (tree.tree ?? [])
+    .filter((item) => item.type === 'blob' && isWithinSource(item.path, sourcePath))
+    .slice(0, 300);
+  const written: string[] = [];
+  for (const file of files) {
+    if ((file.size ?? 0) > 1024 * 1024) continue;
+    const relative = safeRelativePath(relativeFromSource(file.path, sourcePath));
+    if (!relative) continue;
+    const targetRelative = mode === 'skills'
+      ? path.posix.join('skills', sourcePath && sourcePath !== 'skills' ? path.posix.basename(sourcePath) : '', relative)
+      : relative;
+    const target = path.join(workspaceDir, safeRelativePath(targetRelative));
+    const content = await fetchText(rawGitHubUrl(parsed, file.path));
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.writeFile(target, content);
+    written.push(targetRelative);
+  }
+  return written;
+}
+
 async function writeTemplateWorkspace(workspaceDir: string, template?: OpenClawRuntimeTemplate): Promise<void> {
   if (!template) return;
   const root = path.join(workspaceDir, '.clawbot');
@@ -322,6 +447,15 @@ async function writeTemplateWorkspace(workspaceDir: string, template?: OpenClawR
     ).join('\n\n---\n\n') + '\n');
   }
 
+  const syncedWorkspaceFiles: string[] = [];
+  for (const source of cleanSourceList(template.workspaceSources)) {
+    syncedWorkspaceFiles.push(...await syncGitHubSource(workspaceDir, source, 'workspace'));
+  }
+  const syncedSkillFiles: string[] = [];
+  for (const source of cleanSourceList(template.skillSources)) {
+    syncedSkillFiles.push(...await syncGitHubSource(workspaceDir, source, 'skills'));
+  }
+
   const manifest = {
     name: template.name,
     versionId: template.versionId,
@@ -334,6 +468,11 @@ async function writeTemplateWorkspace(workspaceDir: string, template?: OpenClawR
     } : null,
     workspaceFiles: workspaceFiles.map((file) => file.path),
     knowledgeItems: knowledge.map((item) => item.title),
+    workspaceSources: cleanSourceList(template.workspaceSources),
+    skillSources: cleanSourceList(template.skillSources),
+    syncedWorkspaceFiles,
+    syncedSkillFiles,
+    secretEnvKeys: Object.keys(cleanSecretEnv(template.secretEnv)),
   };
   await fs.writeFile(path.join(root, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
   await fs.writeFile(path.join(root, 'version.json'), `${JSON.stringify({ versionId: template.versionId ?? null, version: template.version ?? null }, null, 2)}\n`);
@@ -431,6 +570,7 @@ async function createContainer(
   stateDir: string,
   workspaceDir: string,
   runtimeDepsDir: string | null,
+  secretEnv: Record<string, string> = {},
 ): Promise<void> {
   const envArgs = [
     '-e', 'HOME=/home/node',
@@ -442,6 +582,9 @@ async function createContainer(
   }
   if (OPENCLAW_MODEL_PROVIDER_API_KEY) {
     envArgs.push('-e', `OPENCLAW_MODEL_PROVIDER_API_KEY=${OPENCLAW_MODEL_PROVIDER_API_KEY}`);
+  }
+  for (const [key, value] of Object.entries(cleanSecretEnv(secretEnv))) {
+    envArgs.push('-e', `${key}=${value}`);
   }
 
   await docker([
@@ -459,6 +602,7 @@ async function createContainer(
     '--label', `clawscale.channelId=${identity.channelId}`,
     '--label', `clawscale.endUserId=${identity.endUserId}`,
     '--label', `clawscale.backendId=${identity.backendId}`,
+    '--label', `clawscale.secretEnvHash=${shortHash(stableJson(cleanSecretEnv(secretEnv)))}`,
     '-p', '127.0.0.1::18789',
     '-p', '127.0.0.1::18790',
     '-v', `${stateDir}:/home/node/.openclaw`,
@@ -486,13 +630,19 @@ async function doEnsureOpenClawDockerRuntime(identity: OpenClawRuntimeIdentity, 
   if (runtimeDepsDir) await fs.mkdir(runtimeDepsDir, { recursive: true });
 
   let inspect = await inspectContainer(containerName);
+  const expectedSecretHash = templateSecretHash(template);
+  const actualSecretHash = inspect?.Config?.Labels?.['clawscale.secretEnvHash'];
+  if (inspect && actualSecretHash !== expectedSecretHash) {
+    await docker(['rm', '-f', containerName]);
+    inspect = null;
+  }
   if (!inspect) {
     await writeDefaultRuntimeConfig(stateDir, identity, template);
     await writeTemplateWorkspace(workspaceDir, template);
     await chownRecursive(stateDir, OPENCLAW_CONTAINER_UID, OPENCLAW_CONTAINER_GID);
     await chownRecursive(workspaceDir, OPENCLAW_CONTAINER_UID, OPENCLAW_CONTAINER_GID);
     if (runtimeDepsDir) await chownRecursive(runtimeDepsDir, OPENCLAW_CONTAINER_UID, OPENCLAW_CONTAINER_GID);
-    await createContainer(identity, containerName, stateDir, workspaceDir, runtimeDepsDir);
+    await createContainer(identity, containerName, stateDir, workspaceDir, runtimeDepsDir, cleanSecretEnv(template?.secretEnv));
     inspect = await inspectContainer(containerName);
   } else if (!inspect.State?.Running) {
     await writeDefaultRuntimeConfig(stateDir, identity, template);

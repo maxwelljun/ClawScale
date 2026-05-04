@@ -18,6 +18,9 @@ type AgentForm = {
   model: string;
   workspace: AgentWorkspaceFile[];
   knowledgeBase: AgentKnowledgeItem[];
+  workspaceSourcesText: string;
+  skillSourcesText: string;
+  secretEnvText: string;
   isActive: boolean;
   isDefault: boolean;
 };
@@ -29,6 +32,9 @@ const emptyForm: AgentForm = {
   model: '',
   workspace: OPENCLAW_DEFAULT_WORKSPACE,
   knowledgeBase: [],
+  workspaceSourcesText: '',
+  skillSourcesText: '',
+  secretEnvText: '',
   isActive: true,
   isDefault: false,
 };
@@ -54,6 +60,47 @@ function mergeWithDefaultWorkspace(workspace?: AgentWorkspaceFile[] | null): Age
     }
   }
   return files.length ? files : cloneDefaultWorkspace();
+}
+
+function listToText(value: unknown): string {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0).join('\n') : '';
+}
+
+function textToList(value: string): string[] {
+  return value.split('\n').map((item) => item.trim()).filter(Boolean);
+}
+
+function secretEnvToText(value: unknown): string {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
+  return Object.entries(value)
+    .filter(([key, item]) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(key) && typeof item === 'string')
+    .map(([key, item]) => `${key}=${item}`)
+    .join('\n');
+}
+
+function textToSecretEnv(value: string): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const line of value.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eqIndex = trimmed.indexOf('=');
+    if (eqIndex <= 0) continue;
+    const key = trimmed.slice(0, eqIndex).trim();
+    let item = trimmed.slice(eqIndex + 1).trim();
+    if ((item.startsWith('"') && item.endsWith('"')) || (item.startsWith("'") && item.endsWith("'"))) {
+      item = item.slice(1, -1);
+    }
+    if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) result[key] = item;
+  }
+  return result;
+}
+
+function applyDeepcoinPreset(form: AgentForm): AgentForm {
+  return {
+    ...form,
+    workspaceSourcesText: 'https://github.com/deepcoinapi/agent-skills/tree/main/openclaw',
+    skillSourcesText: 'https://github.com/deepcoinapi/agent-skills',
+  };
 }
 
 export default function AgentTemplates() {
@@ -103,6 +150,9 @@ export default function AgentTemplates() {
       model: config.model ?? '',
       workspace: mergeWithDefaultWorkspace(agent.workspace),
       knowledgeBase: agent.knowledgeBase?.map((item) => ({ ...item })) ?? [],
+      workspaceSourcesText: listToText(config.workspaceSources),
+      skillSourcesText: listToText(config.skillSources),
+      secretEnvText: secretEnvToText(config.secretEnv),
       isActive: agent.isActive,
       isDefault: agent.isDefault,
     });
@@ -135,6 +185,9 @@ export default function AgentTemplates() {
         modelProviderId: form.modelProviderId || null,
         config: {
           model: form.model || undefined,
+          workspaceSources: textToList(form.workspaceSourcesText),
+          skillSources: textToList(form.skillSourcesText),
+          secretEnv: textToSecretEnv(form.secretEnvText),
         },
         skills: [],
         workspace: form.workspace.filter((file) => file.path.trim()).map((file) => ({ ...file, path: file.path.trim() })),
@@ -235,6 +288,46 @@ export default function AgentTemplates() {
                     <textarea className="input min-h-[120px] font-mono text-xs" value={file.content} onChange={(e) => updateWorkspace(index, { content: e.target.value })} placeholder="# Instructions" />
                   </div>
                 ))}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-gray-200 p-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h3 className="font-medium text-gray-900">Runtime sources</h3>
+                  <p className="text-xs text-gray-400">Optional GitHub sources are synced when each isolated OpenClaw runtime is created. Workspace sources may overwrite duplicate markdown files.</p>
+                </div>
+                <button type="button" className="btn-secondary text-xs" onClick={() => setForm((f) => applyDeepcoinPreset(f))}>Load Deepcoin preset</button>
+              </div>
+              <div className="mt-3 grid grid-cols-1 gap-3">
+                <div>
+                  <label className="label">Workspace source URLs</label>
+                  <textarea
+                    className="input min-h-[72px] font-mono text-xs"
+                    value={form.workspaceSourcesText}
+                    onChange={(e) => setForm((f) => ({ ...f, workspaceSourcesText: e.target.value }))}
+                    placeholder="https://github.com/deepcoinapi/agent-skills/tree/main/openclaw"
+                  />
+                </div>
+                <div>
+                  <label className="label">Skill source URLs</label>
+                  <textarea
+                    className="input min-h-[72px] font-mono text-xs"
+                    value={form.skillSourcesText}
+                    onChange={(e) => setForm((f) => ({ ...f, skillSourcesText: e.target.value }))}
+                    placeholder="https://github.com/deepcoinapi/agent-skills"
+                  />
+                </div>
+                <div>
+                  <label className="label">Secret env</label>
+                  <textarea
+                    className="input min-h-[88px] font-mono text-xs"
+                    value={form.secretEnvText}
+                    onChange={(e) => setForm((f) => ({ ...f, secretEnvText: e.target.value }))}
+                    placeholder={'DC_API_KEY=...\nDC_SECRET_KEY=...\nDC_PASSPHRASE=...'}
+                  />
+                  <p className="mt-1 text-xs text-gray-400">Injected as container env only. Updating values recreates the runtime container while preserving state and workspace data.</p>
+                </div>
               </div>
             </div>
 

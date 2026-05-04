@@ -18,6 +18,9 @@ const configSchema = z.object({
   transport:      z.enum(['http', 'sse', 'websocket', 'pty-websocket'] as const).optional(),
   responseFormat: z.enum(['json-auto', 'langgraph', 'raw-text'] as const).optional(),
   bridgeToken:    z.string().optional(),
+  workspaceSources: z.array(z.string().url()).optional(),
+  skillSources:     z.array(z.string().url()).optional(),
+  secretEnv:        z.record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/), z.string()).optional(),
 }).default({});
 
 const createSchema = z.object({
@@ -75,7 +78,7 @@ aiBackendsRouter.use(requireAuth);
 
 // ── GET /api/ai-backends ─────────────────────────���───────────────────────────
 aiBackendsRouter.get('/', async (req, res) => {
-  const { tenantId } = req.auth!;
+  const { tenantId, role } = req.auth!;
 
   const rows = await db.aiBackend.findMany({
     where: { tenantId },
@@ -83,12 +86,18 @@ aiBackendsRouter.get('/', async (req, res) => {
     select: {
       id: true, tenantId: true, name: true, type: true,
       modelProviderId: true, runtimeType: true, skills: true, workspace: true, knowledgeBase: true,
+      config: true,
       isActive: true, isDefault: true, createdAt: true, updatedAt: true,
       modelProvider: { select: { id: true, name: true, provider: true } },
     },
   });
 
-  res.json({ ok: true, data: rows });
+  res.json({
+    ok: true,
+    data: role === 'admin'
+      ? rows
+      : rows.map((row) => ({ ...row, config: row.config ? { model: (row.config as Record<string, unknown>).model } : {} })),
+  });
 });
 
 // ── POST /api/ai-backends ──────────────���─────────────────────────────────────

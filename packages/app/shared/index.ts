@@ -168,6 +168,12 @@ export interface AiBackendProviderConfig {
   agentId?: string;
   /** Claude Managed Agents — persisted environment ID (auto-created on first use) */
   environmentId?: string;
+  /** Optional GitHub tree/repo URLs synced into the isolated OpenClaw workspace. */
+  workspaceSources?: string[];
+  /** Optional GitHub tree/repo URLs synced into workspace/skills for the isolated OpenClaw runtime. */
+  skillSources?: string[];
+  /** Optional runtime-only environment variables injected into the isolated OpenClaw container. */
+  secretEnv?: Record<string, string>;
 }
 
 // ── Backend type descriptors ─────────────────────────────────────────────────

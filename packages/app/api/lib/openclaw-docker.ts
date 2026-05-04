@@ -315,12 +315,33 @@ function cleanSecretEnv(value?: Record<string, string>): Record<string, string> 
 }
 
 function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return JSON.stringify(value.map((item) => JSON.parse(stableJson(item))));
   if (!isObject(value)) return JSON.stringify(value);
   return JSON.stringify(Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b))));
 }
 
 function templateSecretHash(template?: OpenClawRuntimeTemplate): string {
   return shortHash(stableJson(cleanSecretEnv(template?.secretEnv)));
+}
+
+function templateWorkspaceHash(template: OpenClawRuntimeTemplate): string {
+  return shortHash(stableJson({
+    name: template.name ?? null,
+    versionId: template.versionId ?? null,
+    version: template.version ?? null,
+    modelProvider: template.modelProvider ? {
+      id: template.modelProvider.id,
+      provider: template.modelProvider.provider,
+      baseUrl: template.modelProvider.baseUrl ?? null,
+      model: template.modelProvider.model ?? null,
+      api: template.modelProvider.api ?? null,
+    } : null,
+    workspace: customWorkspaceFiles(template).map((file) => ({ path: safeRelativePath(file.path), content: file.content })),
+    knowledgeBase: template.knowledgeBase ?? [],
+    workspaceSources: cleanSourceList(template.workspaceSources),
+    skillSources: cleanSourceList(template.skillSources),
+    secretEnvKeys: Object.keys(cleanSecretEnv(template.secretEnv)).sort(),
+  }));
 }
 
 interface GitHubTreeSource {
@@ -442,6 +463,14 @@ async function writeTemplateWorkspace(workspaceDir: string, template?: OpenClawR
   if (!template) return;
   const root = path.join(workspaceDir, '.clawbot');
   await fs.mkdir(root, { recursive: true });
+  const workspaceHash = templateWorkspaceHash(template);
+  const manifestPath = path.join(root, 'manifest.json');
+  try {
+    const existing = JSON.parse(await fs.readFile(manifestPath, 'utf8')) as { workspaceHash?: unknown };
+    if (existing.workspaceHash === workspaceHash) return;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error;
+  }
 
   const workspaceFiles = customWorkspaceFiles(template);
   const managedPaths = new Set<string>();
@@ -475,6 +504,7 @@ async function writeTemplateWorkspace(workspaceDir: string, template?: OpenClawR
   }
 
   const manifest = {
+    workspaceHash,
     name: template.name,
     versionId: template.versionId,
     version: template.version,

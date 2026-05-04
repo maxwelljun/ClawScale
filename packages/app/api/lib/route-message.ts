@@ -384,6 +384,27 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
         console.error('[backend error]', (result as PromiseRejectedResult).reason);
       }
     }
+    if (replies.length === 0 && results.length > 0) {
+      const firstFailure = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+      const fallback = formatBackendFailure(firstFailure?.reason);
+      const backend = backends[0];
+      replies.push({ backendId: backend?.id ?? null, backendName: backend?.name ?? null, reply: fallback });
+      await db.message.create({
+        data: {
+          id: generateId('msg'), conversationId: conversation!.id,
+          role: 'assistant', content: fallback, backendId: backend?.id ?? null,
+          metadata: { backendName: backend?.name ?? null, error: errorMessage(firstFailure?.reason) },
+        },
+      });
+      if (backends.length === 1 && onStream) {
+        await onStream({
+          backendId: backend?.id ?? '',
+          backendName: backend?.name ?? '',
+          text: backend?.name && !hideLabels ? `[${backend.name}]\n${fallback}` : fallback,
+          done: true,
+        });
+      }
+    }
     await db.conversation.update({ where: { id: conversation!.id }, data: { updatedAt: new Date() } });
     return { conversationId: conversation!.id, replies, reply: formatCombined(replies) };
   }
@@ -861,6 +882,18 @@ function readFirstModel(value: unknown): string | undefined {
 
 function readJsonArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? value as T[] : [];
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error ?? '');
+}
+
+function formatBackendFailure(error: unknown): string {
+  const message = errorMessage(error);
+  if (message.includes('OpenClaw runtime connection closed while processing')) {
+    return 'OpenClaw runtime restarted or closed the connection while processing this request. If the request changed workspace files, skills, or runtime config, it may have been applied. Please retry after the runtime is ready.';
+  }
+  return 'The selected agent failed to complete this request. Please retry, or check the agent runtime logs in Agents.';
 }
 
 async function applyAgentTemplateVersion<T extends {

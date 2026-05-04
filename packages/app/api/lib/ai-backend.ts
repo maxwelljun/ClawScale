@@ -416,39 +416,46 @@ async function handleOpenAiSdk(
     const startedAt = Date.now();
     const response = await runOpenClawQueued(queueKey, async () => {
       const messages = history.map(toOpenAiMessage);
-      const res = await fetch(`${url.replace(/\/$/, '')}/v1/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Accept': OPENCLAW_STREAM ? 'text/event-stream' : 'application/json',
-          'Content-Type': 'application/json',
-          'x-openclaw-scopes': 'operator.read,operator.write',
-          ...(sessionKey ? { 'x-openclaw-session-key': sessionKey } : {}),
-          ...(options.platform ? { 'x-openclaw-message-channel': options.platform } : {}),
-          ...(providerModel ? { 'x-openclaw-model': providerModel } : {}),
-        },
-        body: JSON.stringify({
-          model,
-          messages,
-          max_completion_tokens: OPENCLAW_MAX_COMPLETION_TOKENS,
-          ...(OPENCLAW_STREAM ? { stream: true } : {}),
-          ...(sessionKey ? { user: sessionKey } : {}),
-        }),
-        signal: AbortSignal.timeout(OPENCLAW_CHAT_TIMEOUT_MS),
-      });
-      if (!res.ok) {
+      try {
+        const res = await fetch(`${url.replace(/\/$/, '')}/v1/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Accept': OPENCLAW_STREAM ? 'text/event-stream' : 'application/json',
+            'Content-Type': 'application/json',
+            'x-openclaw-scopes': 'operator.read,operator.write',
+            ...(sessionKey ? { 'x-openclaw-session-key': sessionKey } : {}),
+            ...(options.platform ? { 'x-openclaw-message-channel': options.platform } : {}),
+            ...(providerModel ? { 'x-openclaw-model': providerModel } : {}),
+          },
+          body: JSON.stringify({
+            model,
+            messages,
+            max_completion_tokens: OPENCLAW_MAX_COMPLETION_TOKENS,
+            ...(OPENCLAW_STREAM ? { stream: true } : {}),
+            ...(sessionKey ? { user: sessionKey } : {}),
+          }),
+          signal: AbortSignal.timeout(OPENCLAW_CHAT_TIMEOUT_MS),
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(`OpenClaw backend: ${res.status} ${text.slice(0, 500)}`);
+        }
+        const contentType = res.headers.get('content-type') ?? '';
+        if (OPENCLAW_STREAM && contentType.includes('text/event-stream') && res.body) {
+          return { content: await readOpenAiChatCompletionStream(res.body, options.onStream) };
+        }
         const text = await res.text();
-        throw new Error(`OpenClaw backend: ${res.status} ${text.slice(0, 500)}`);
+        const parsed = JSON.parse(text) as {
+          choices?: Array<{ message?: { content?: string | null } }>;
+        };
+        return { content: parsed.choices?.[0]?.message?.content?.trim() ?? '' };
+      } catch (error) {
+        if (isOpenClawConnectionInterrupted(error)) {
+          throw new Error('OpenClaw runtime connection closed while processing. The runtime may have restarted after applying workspace or skills changes; retry after it becomes ready.');
+        }
+        throw error;
       }
-      const contentType = res.headers.get('content-type') ?? '';
-      if (OPENCLAW_STREAM && contentType.includes('text/event-stream') && res.body) {
-        return { content: await readOpenAiChatCompletionStream(res.body, options.onStream) };
-      }
-      const text = await res.text();
-      const parsed = JSON.parse(text) as {
-        choices?: Array<{ message?: { content?: string | null } }>;
-      };
-      return { content: parsed.choices?.[0]?.message?.content?.trim() ?? '' };
     });
     if (sessionKey) {
       console.log(`[openclaw] Chat completed for ${sessionKey} in ${Date.now() - startedAt}ms`);
@@ -466,6 +473,13 @@ async function handleOpenAiSdk(
   messages.push(...history.map(toOpenAiMessage));
   const response = await client.chat.completions.create({ model, messages, max_completion_tokens: 1024 });
   return response.choices[0]?.message?.content?.trim() ?? '';
+}
+
+function isOpenClawConnectionInterrupted(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const cause = (error as { cause?: unknown }).cause;
+  const causeCode = cause && typeof cause === 'object' ? (cause as { code?: unknown }).code : undefined;
+  return error.name === 'TypeError' && error.message === 'terminated' && causeCode === 'UND_ERR_SOCKET';
 }
 
 /**

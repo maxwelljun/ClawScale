@@ -36,9 +36,24 @@ const emptyForm: AgentForm = {
 function freshForm(): AgentForm {
   return {
     ...emptyForm,
-    workspace: emptyForm.workspace.map((file) => ({ ...file })),
+    workspace: cloneDefaultWorkspace(),
     knowledgeBase: emptyForm.knowledgeBase.map((item) => ({ ...item })),
   };
+}
+
+function cloneDefaultWorkspace(): AgentWorkspaceFile[] {
+  return OPENCLAW_DEFAULT_WORKSPACE.map((file) => ({ ...file }));
+}
+
+function mergeWithDefaultWorkspace(workspace?: AgentWorkspaceFile[] | null): AgentWorkspaceFile[] {
+  const files = workspace?.length ? workspace.map((file) => ({ ...file })) : [];
+  const existingPaths = new Set(files.map((file) => file.path.trim().toLowerCase()).filter(Boolean));
+  for (const file of OPENCLAW_DEFAULT_WORKSPACE) {
+    if (!existingPaths.has(file.path.toLowerCase())) {
+      files.push({ ...file });
+    }
+  }
+  return files.length ? files : cloneDefaultWorkspace();
 }
 
 export default function AgentTemplates() {
@@ -86,7 +101,7 @@ export default function AgentTemplates() {
       runtimeType: (agent.runtimeType as AgentRuntimeType) ?? 'openclaw',
       modelProviderId: agent.modelProviderId ?? '',
       model: config.model ?? '',
-      workspace: agent.workspace?.length ? agent.workspace.map((file) => ({ ...file })) : freshForm().workspace,
+      workspace: mergeWithDefaultWorkspace(agent.workspace),
       knowledgeBase: agent.knowledgeBase?.map((item) => ({ ...item })) ?? [],
       isActive: agent.isActive,
       isDefault: agent.isDefault,
@@ -205,7 +220,10 @@ export default function AgentTemplates() {
                   <h3 className="font-medium text-gray-900">Workspace files</h3>
                   <p className="text-xs text-gray-400">Generated into the isolated OpenClaw workspace. Defaults mirror the OpenClaw workspace template.</p>
                 </div>
-                <button type="button" className="btn-secondary text-xs" onClick={() => setForm((f) => ({ ...f, workspace: [...f.workspace, { path: 'docs/new.md', content: '' }] }))}><Plus className="h-3.5 w-3.5" /> Add file</button>
+                <div className="flex gap-2">
+                  <button type="button" className="btn-secondary text-xs" onClick={() => setForm((f) => ({ ...f, workspace: cloneDefaultWorkspace() }))}>Load OpenClaw defaults</button>
+                  <button type="button" className="btn-secondary text-xs" onClick={() => setForm((f) => ({ ...f, workspace: [...f.workspace, { path: 'docs/new.md', content: '' }] }))}><Plus className="h-3.5 w-3.5" /> Add file</button>
+                </div>
               </div>
               <div className="mt-3 space-y-3">
                 {form.workspace.map((file, index) => (

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { BotMessageSquare, Loader2, Play, RotateCw, Square, RefreshCw, Settings, FileText, Terminal, MoreHorizontal, X, Send, Trash2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { getToken } from '@/lib/auth';
@@ -51,10 +51,10 @@ export default function Agents() {
   const [terminalOutput, setTerminalOutput] = useState('');
   const [quickCommandOutput, setQuickCommandOutput] = useState('');
   const [terminalSocket, setTerminalSocket] = useState<WebSocket | null>(null);
-  const [terminalInput, setTerminalInput] = useState('');
   const [runtimeModelProviderId, setRuntimeModelProviderId] = useState('');
   const [runtimeModel, setRuntimeModel] = useState('');
   const [panelLoading, setPanelLoading] = useState(false);
+  const terminalViewportRef = useRef<HTMLPreElement | null>(null);
 
   async function load() {
     setLoading(true);
@@ -65,6 +65,10 @@ export default function Agents() {
 
   useEffect(() => { void load(); }, []);
   useEffect(() => () => terminalSocket?.close(), [terminalSocket]);
+  useEffect(() => {
+    const viewport = terminalViewportRef.current;
+    if (viewport) viewport.scrollTop = viewport.scrollHeight;
+  }, [terminalOutput]);
 
   async function runtimeAction(containerName: string, action: 'start' | 'stop' | 'restart') {
     setActionId(`${containerName}:${action}`);
@@ -146,14 +150,68 @@ export default function Agents() {
     const ws = new WebSocket(`${protocol}//${window.location.host}/api/agent-instances/terminal?container=${encodeURIComponent(selected.containerName)}&token=${encodeURIComponent(token ?? '')}&shell=sh`);
     setTerminalOutput('');
     ws.onmessage = (event) => setTerminalOutput((prev) => prev + String(event.data));
+    ws.onopen = () => setTimeout(() => terminalViewportRef.current?.focus(), 0);
     ws.onclose = () => setTerminalSocket(null);
     setTerminalSocket(ws);
   }
 
-  function sendTerminalInput() {
+  function sendTerminalData(data: string) {
     if (!terminalSocket || terminalSocket.readyState !== WebSocket.OPEN) return;
-    terminalSocket.send(`${terminalInput}\n`);
-    setTerminalInput('');
+    terminalSocket.send(data);
+  }
+
+  function handleTerminalKeyDown(event: React.KeyboardEvent<HTMLPreElement>) {
+    if (!terminalSocket || terminalSocket.readyState !== WebSocket.OPEN) return;
+
+    if (event.ctrlKey && event.key.toLowerCase() === 'c') {
+      event.preventDefault();
+      sendTerminalData('\x03');
+      return;
+    }
+    if (event.ctrlKey && event.key.toLowerCase() === 'd') {
+      event.preventDefault();
+      sendTerminalData('\x04');
+      return;
+    }
+    if (event.ctrlKey && event.key.toLowerCase() === 'l') {
+      event.preventDefault();
+      setTerminalOutput('');
+      sendTerminalData('\x0c');
+      return;
+    }
+
+    const keys: Record<string, string> = {
+      Enter: '\r',
+      Backspace: '\x7f',
+      Tab: '\t',
+      Escape: '\x1b',
+      ArrowUp: '\x1b[A',
+      ArrowDown: '\x1b[B',
+      ArrowRight: '\x1b[C',
+      ArrowLeft: '\x1b[D',
+      Home: '\x1b[H',
+      End: '\x1b[F',
+      Delete: '\x1b[3~',
+    };
+    const mapped = keys[event.key];
+    if (mapped) {
+      event.preventDefault();
+      sendTerminalData(mapped);
+      return;
+    }
+
+    if (!event.metaKey && !event.ctrlKey && !event.altKey && event.key.length === 1) {
+      event.preventDefault();
+      sendTerminalData(event.key);
+    }
+  }
+
+  function handleTerminalPaste(event: React.ClipboardEvent<HTMLPreElement>) {
+    if (!terminalSocket || terminalSocket.readyState !== WebSocket.OPEN) return;
+    const text = event.clipboardData.getData('text');
+    if (!text) return;
+    event.preventDefault();
+    sendTerminalData(text);
   }
 
   async function deleteRuntime(removeData: boolean) {
@@ -329,11 +387,18 @@ export default function Agents() {
                         <Terminal className="h-3.5 w-3.5" /> {terminalSocket ? 'Reconnect shell' : 'Connect shell'}
                       </button>
                     </div>
-                    <pre className="mt-3 min-h-[360px] overflow-auto rounded-lg bg-gray-950 p-4 text-xs leading-relaxed text-gray-100">{terminalOutput || 'Connect to open a live shell.'}</pre>
-                    <div className="mt-2 flex gap-2">
-                      <input className="input font-mono text-xs" value={terminalInput} onChange={(e) => setTerminalInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') sendTerminalInput(); }} placeholder="Type a shell command and press Enter" />
-                      <button className="btn-secondary" onClick={sendTerminalInput} disabled={!terminalSocket || terminalSocket.readyState !== WebSocket.OPEN}><Send className="h-4 w-4" /> Send</button>
-                    </div>
+                    <pre
+                      ref={terminalViewportRef}
+                      tabIndex={0}
+                      role="textbox"
+                      aria-label="Interactive terminal"
+                      spellCheck={false}
+                      onClick={() => terminalViewportRef.current?.focus()}
+                      onKeyDown={handleTerminalKeyDown}
+                      onPaste={handleTerminalPaste}
+                      className="mt-3 min-h-[360px] cursor-text overflow-auto rounded-lg bg-gray-950 p-4 font-mono text-xs leading-relaxed text-gray-100 outline-none ring-0 focus:ring-2 focus:ring-teal-500"
+                    >{terminalOutput || 'Connect to open a live shell, then click here and type directly.'}</pre>
+                    <p className="mt-2 text-xs text-gray-400">Click the terminal area to type. Paste, Enter, Tab, arrows, Ctrl+C, Ctrl+D and Ctrl+L are passed through to the shell.</p>
                   </div>
                   <div className="rounded-lg border border-gray-200 p-4">
                     <h3 className="font-medium text-gray-900">Quick command</h3>

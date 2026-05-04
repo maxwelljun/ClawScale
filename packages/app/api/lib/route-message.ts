@@ -198,6 +198,9 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     });
     activeBackendIds.push(channel.agentTemplateId);
   }
+  const routeBackendIds = channel.agentTemplateId && allBackends[0]
+    ? [allBackends[0].id]
+    : activeBackendIds;
   if (channel.agentTemplateId && allBackends[0]) {
     await db.conversation.update({
       where: { id: conversation.id },
@@ -229,7 +232,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     }
   }
   if (channel.agentTemplateId && allBackends[0]) {
-    console.log(`[route] channel=${channelId} agent=${allBackends[0].name} (${allBackends[0].id}) version=${channel.agentTemplateVersion?.version ?? 'draft'} modelProvider=${allBackends[0].modelProvider?.name ?? 'none'} model=${((allBackends[0].config ?? {}) as AiBackendProviderConfig).model ?? readFirstModel(allBackends[0].modelProvider?.models) ?? 'default'}`);
+    console.log(`[route] channel=${channelId} agent=${allBackends[0].name} (${allBackends[0].id}) version=${channel.agentTemplateVersion?.version ?? 'draft'} modelProvider=${allBackends[0].modelProvider?.name ?? 'none'} model=${((allBackends[0].config ?? {}) as AiBackendProviderConfig).model ?? readFirstModel(allBackends[0].modelProvider?.models) ?? 'default'} active=${activeBackendIds.length} routed=1`);
   }
 
   const replies: ReplyEntry[] = [];
@@ -411,7 +414,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
 
   // 8. Parse commands
   const cmd = parseCommand(text);
-  const activeBackends = allBackends.filter((b) => activeBackendIds.includes(b.id));
+  const activeBackends = allBackends.filter((b) => routeBackendIds.includes(b.id));
 
   if (cmd) {
     // ── System commands ────────────────────────────────────────────────

@@ -29,6 +29,14 @@ export interface OpenClawDockerRuntime {
   gatewayToken: string;
   stateDir: string;
   workspaceDir: string;
+  timings: {
+    totalMs: number;
+    configMs: number;
+    workspaceMs: number;
+    chownMs: number;
+    containerMs: number;
+    waitMs: number;
+  };
 }
 
 export interface OpenClawRuntimeTemplate {
@@ -670,6 +678,12 @@ async function createContainer(
 }
 
 async function doEnsureOpenClawDockerRuntime(identity: OpenClawRuntimeIdentity, template?: OpenClawRuntimeTemplate): Promise<OpenClawDockerRuntime> {
+  const startedAt = Date.now();
+  let configMs = 0;
+  let workspaceMs = 0;
+  let chownMs = 0;
+  let containerMs = 0;
+  let waitMs = 0;
   const containerName = openClawContainerName(identity);
   const { stateDir, workspaceDir } = openClawRuntimeDirs(identity);
   const runtimeDepsDir = OPENCLAW_SHARED_RUNTIME_DEPS ? openClawSharedRuntimeDepsDir() : null;
@@ -685,39 +699,66 @@ async function doEnsureOpenClawDockerRuntime(identity: OpenClawRuntimeIdentity, 
     inspect = null;
   }
   if (!inspect) {
+    let stepAt = Date.now();
     await writeDefaultRuntimeConfig(stateDir, identity, template);
+    configMs += Date.now() - stepAt;
+    stepAt = Date.now();
     await writeTemplateWorkspace(workspaceDir, template);
+    workspaceMs += Date.now() - stepAt;
+    stepAt = Date.now();
     await chownRecursive(stateDir, OPENCLAW_CONTAINER_UID, OPENCLAW_CONTAINER_GID);
     await chownRecursive(workspaceDir, OPENCLAW_CONTAINER_UID, OPENCLAW_CONTAINER_GID);
     if (runtimeDepsDir) await chownRecursive(runtimeDepsDir, OPENCLAW_CONTAINER_UID, OPENCLAW_CONTAINER_GID);
+    chownMs += Date.now() - stepAt;
+    stepAt = Date.now();
     await createContainer(identity, containerName, stateDir, workspaceDir, runtimeDepsDir, cleanSecretEnv(template?.secretEnv));
+    containerMs += Date.now() - stepAt;
     inspect = await inspectContainer(containerName);
   } else if (!inspect.State?.Running) {
+    let stepAt = Date.now();
     await writeDefaultRuntimeConfig(stateDir, identity, template);
+    configMs += Date.now() - stepAt;
+    stepAt = Date.now();
     await writeTemplateWorkspace(workspaceDir, template);
+    workspaceMs += Date.now() - stepAt;
+    stepAt = Date.now();
     await chownRecursive(stateDir, OPENCLAW_CONTAINER_UID, OPENCLAW_CONTAINER_GID);
     await chownRecursive(workspaceDir, OPENCLAW_CONTAINER_UID, OPENCLAW_CONTAINER_GID);
     if (runtimeDepsDir) await chownRecursive(runtimeDepsDir, OPENCLAW_CONTAINER_UID, OPENCLAW_CONTAINER_GID);
+    chownMs += Date.now() - stepAt;
+    stepAt = Date.now();
     await docker(['start', containerName]);
+    containerMs += Date.now() - stepAt;
     inspect = await inspectContainer(containerName);
   } else {
+    let stepAt = Date.now();
     await writeDefaultRuntimeConfig(stateDir, identity, template);
+    configMs += Date.now() - stepAt;
+    stepAt = Date.now();
     await writeTemplateWorkspace(workspaceDir, template);
+    workspaceMs += Date.now() - stepAt;
+    stepAt = Date.now();
     await chownRecursive(stateDir, OPENCLAW_CONTAINER_UID, OPENCLAW_CONTAINER_GID);
     await chownRecursive(workspaceDir, OPENCLAW_CONTAINER_UID, OPENCLAW_CONTAINER_GID);
+    chownMs += Date.now() - stepAt;
   }
 
   if (!inspect) throw new Error(`Failed to inspect OpenClaw container ${containerName}`);
   inspect = await ensureNetwork(containerName, inspect);
   const baseUrl = getRuntimeUrl(containerName, inspect);
 
+  const waitStartedAt = Date.now();
   await waitForHealth(baseUrl);
+  waitMs += Date.now() - waitStartedAt;
+  const totalMs = Date.now() - startedAt;
+  console.log(`[openclaw] Runtime ready ${containerName} in ${totalMs}ms (config=${configMs}ms workspace=${workspaceMs}ms chown=${chownMs}ms container=${containerMs}ms wait=${waitMs}ms)`);
   return {
     baseUrl,
     containerName,
     gatewayToken: openClawGatewayToken(identity),
     stateDir,
     workspaceDir,
+    timings: { totalMs, configMs, workspaceMs, chownMs, containerMs, waitMs },
   };
 }
 

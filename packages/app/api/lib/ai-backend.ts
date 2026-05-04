@@ -414,8 +414,11 @@ async function handleOpenAiSdk(
     const sessionKey = options.openclaw ? openClawSessionKey(options.openclaw) : undefined;
     const queueKey = openClawQueueKey(options.openclaw, sessionKey);
     const startedAt = Date.now();
+    let queueWaitMs = 0;
     const response = await runOpenClawQueued(queueKey, async () => {
+      queueWaitMs = Date.now() - startedAt;
       const messages = history.map(toOpenAiMessage);
+      const fetchStartedAt = Date.now();
       try {
         const res = await fetch(`${url.replace(/\/$/, '')}/v1/chat/completions`, {
           method: 'POST',
@@ -443,13 +446,13 @@ async function handleOpenAiSdk(
         }
         const contentType = res.headers.get('content-type') ?? '';
         if (OPENCLAW_STREAM && contentType.includes('text/event-stream') && res.body) {
-          return { content: await readOpenAiChatCompletionStream(res.body, options.onStream) };
+          return { content: await readOpenAiChatCompletionStream(res.body, options.onStream), fetchMs: Date.now() - fetchStartedAt };
         }
         const text = await res.text();
         const parsed = JSON.parse(text) as {
           choices?: Array<{ message?: { content?: string | null } }>;
         };
-        return { content: parsed.choices?.[0]?.message?.content?.trim() ?? '' };
+        return { content: parsed.choices?.[0]?.message?.content?.trim() ?? '', fetchMs: Date.now() - fetchStartedAt };
       } catch (error) {
         if (isOpenClawConnectionInterrupted(error)) {
           throw new Error('OpenClaw runtime connection closed while processing. The runtime may have restarted after applying workspace or skills changes; retry after it becomes ready.');
@@ -458,7 +461,7 @@ async function handleOpenAiSdk(
       }
     });
     if (sessionKey) {
-      console.log(`[openclaw] Chat completed for ${sessionKey} in ${Date.now() - startedAt}ms`);
+      console.log(`[openclaw] Chat completed for ${sessionKey} in ${Date.now() - startedAt}ms (queue=${queueWaitMs}ms fetch=${response.fetchMs}ms)`);
     }
     return response.content;
   }
@@ -793,7 +796,9 @@ export async function generateReply(options: GenerateOptions): Promise<string> {
         // llm and openclaw use the OpenAI SDK client
         if (type === 'llm' || type === 'openclaw') {
           if (type === 'openclaw' && options.openclaw && process.env.OPENCLAW_DOCKER_ISOLATION !== 'false') {
+            const ensureStartedAt = Date.now();
             const runtime = await ensureOpenClawDockerRuntime(options.openclaw, options.openclawTemplate);
+            console.log(`[openclaw] Ensure completed for ${runtime.containerName} in ${Date.now() - ensureStartedAt}ms`);
             cfg.baseUrl = runtime.baseUrl;
             cfg.apiKey = runtime.gatewayToken;
           }

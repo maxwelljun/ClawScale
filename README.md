@@ -281,7 +281,7 @@ packages/
 | `CORS_ORIGIN` | Frontend URL (default: `http://localhost:4040`) |
 | `PORT` | API port (default: `4041`) |
 | `WHATSAPP_AUTH_DIR` | WhatsApp session files directory (default: `./data/whatsapp`) |
-| `OPENCLAW_IMAGE` | Docker image used for isolated OpenClaw runtimes (default: `1panel/openclaw:latest`) |
+| `OPENCLAW_IMAGE` | Docker image used for isolated OpenClaw runtimes (default: `1panel/openclaw:2026.3.29`) |
 | `OPENCLAW_DOCKER_ISOLATION` | Set to `false` to disable per-user Docker runtimes and use the backend `baseUrl` directly |
 | `OPENCLAW_DATA_DIR` | Root directory for isolated OpenClaw state/workspace data (default: `./data/tenants`) |
 | `OPENCLAW_GATEWAY_TOKEN` | Optional token passed to isolated OpenClaw gateway containers |

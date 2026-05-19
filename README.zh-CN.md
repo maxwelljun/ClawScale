@@ -281,7 +281,7 @@ packages/
 | `CORS_ORIGIN` | 前端 URL（默认：`http://localhost:4040`） |
 | `PORT` | API 端口（默认：`4041`） |
 | `WHATSAPP_AUTH_DIR` | WhatsApp 会话文件目录（默认：`./data/whatsapp`） |
-| `OPENCLAW_IMAGE` | 隔离 OpenClaw runtime 使用的 Docker 镜像（默认：`1panel/openclaw:latest`） |
+| `OPENCLAW_IMAGE` | 隔离 OpenClaw runtime 使用的 Docker 镜像（默认：`1panel/openclaw:2026.3.29`） |
 | `OPENCLAW_DOCKER_ISOLATION` | 设为 `false` 时关闭每用户 Docker runtime，直接使用 backend `baseUrl` |
 | `OPENCLAW_DATA_DIR` | 隔离 OpenClaw state/workspace 数据根目录（默认：`./data/tenants`） |
 | `OPENCLAW_GATEWAY_TOKEN` | 传给隔离 OpenClaw gateway 容器的可选 token |

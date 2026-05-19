@@ -4,11 +4,12 @@
 
 import { Bot } from 'grammy';
 import type { Context } from 'grammy';
+import { run, type RunnerHandle } from '@grammyjs/runner';
 import { db } from '../db/index.js';
 import { routeInboundMessage } from '../lib/route-message.js';
 import type { Attachment } from '../lib/route-message.js';
 
-const bots = new Map<string, Bot>();
+const bots = new Map<string, { bot: Bot; runner: RunnerHandle }>();
 type TelegramAbortSignal = Parameters<Bot['api']['sendMessage']>[3];
 const TELEGRAM_TEXT_LIMIT = 4096;
 const TELEGRAM_DRAFT_THROTTLE_MS = 1000;
@@ -192,16 +193,24 @@ export async function startTelegramBot(channelId: string, token: string): Promis
 
   bot.catch((err) => console.error(`[telegram:${channelId}] Bot error:`, err));
 
-  bots.set(channelId, bot);
-  bot.start({ drop_pending_updates: true }).catch((err) => console.error(`[telegram:${channelId}] Start error:`, err));
-  console.log(`[telegram:${channelId}] Bot started`);
+  await bot.api.deleteWebhook({ drop_pending_updates: true });
+  const runner = run(bot, {
+    runner: {
+      fetch: { timeout: 30, allowed_updates: ['message'] },
+      retryInterval: 'exponential',
+      maxRetryTime: 300_000,
+    },
+  });
+  runner.task()?.catch((err) => console.error(`[telegram:${channelId}] Runner stopped with error:`, err));
+  bots.set(channelId, { bot, runner });
+  console.log(`[telegram:${channelId}] Bot started (runner=${runner.isRunning()})`);
 }
 
 export async function stopTelegramBot(channelId: string): Promise<void> {
-  const bot = bots.get(channelId);
-  if (!bot) return;
-  await bot.stop();
+  const entry = bots.get(channelId);
+  if (!entry) return;
   bots.delete(channelId);
+  await entry.runner.stop();
   console.log(`[telegram:${channelId}] Stopped`);
 }
 

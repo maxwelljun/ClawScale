@@ -288,6 +288,7 @@ packages/
 | `OPENCLAW_DOCKER_NETWORK` | Optional Docker network for app-to-OpenClaw container traffic |
 | `OPENCLAW_MODEL_PROVIDER_ID` | Optional default OpenClaw model provider id, e.g. `minimax` |
 | `OPENCLAW_MODEL_PROVIDER_BASE_URL` | Optional default OpenClaw model provider base URL |
+| `OPENCLAW_NODE_OPTIONS` | Node options passed to isolated OpenClaw runtimes (default: `--max-old-space-size=3072`) |
 | `OPENCLAW_MODEL_PROVIDER_API_KEY` | Optional default OpenClaw model provider API key |
 | `OPENCLAW_MODEL_PROVIDER_API` | OpenClaw provider API type (default: `openai-completions`) |
 | `OPENCLAW_DEFAULT_MODEL` | Optional default OpenClaw model id |

@@ -288,6 +288,7 @@ packages/
 | `OPENCLAW_DOCKER_NETWORK` | app 到 OpenClaw 容器通信使用的可选 Docker 网络 |
 | `OPENCLAW_MODEL_PROVIDER_ID` | 可选的默认 OpenClaw 模型 provider id，例如 `minimax` |
 | `OPENCLAW_MODEL_PROVIDER_BASE_URL` | 可选的默认 OpenClaw 模型 provider base URL |
+| `OPENCLAW_NODE_OPTIONS` | 传给隔离 OpenClaw runtime 的 Node 参数（默认：`--max-old-space-size=3072`） |
 | `OPENCLAW_MODEL_PROVIDER_API_KEY` | 可选的默认 OpenClaw 模型 provider API key |
 | `OPENCLAW_MODEL_PROVIDER_API` | OpenClaw provider API 类型（默认：`openai-completions`） |
 | `OPENCLAW_DEFAULT_MODEL` | 可选的默认 OpenClaw 模型 id |

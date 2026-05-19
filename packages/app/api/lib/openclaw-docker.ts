@@ -73,6 +73,7 @@ const OPENCLAW_DEFAULT_MODEL = process.env.OPENCLAW_DEFAULT_MODEL ?? '';
 const OPENCLAW_READY_TIMEOUT_MS = Number(process.env.OPENCLAW_READY_TIMEOUT_MS ?? 180_000);
 const OPENCLAW_PREWARM_CHAT = process.env.OPENCLAW_PREWARM_CHAT === 'true';
 const OPENCLAW_SHARED_RUNTIME_DEPS = process.env.OPENCLAW_SHARED_RUNTIME_DEPS !== 'false';
+const OPENCLAW_NODE_OPTIONS = process.env.OPENCLAW_NODE_OPTIONS ?? '--max-old-space-size=3072';
 
 const ensureTasks = new Map<string, Promise<OpenClawDockerRuntime>>();
 const prewarmTasks = new Map<string, Promise<void>>();
@@ -329,7 +330,10 @@ function stableJson(value: unknown): string {
 }
 
 function templateSecretHash(template?: OpenClawRuntimeTemplate): string {
-  return shortHash(stableJson(cleanSecretEnv(template?.secretEnv)));
+  return shortHash(stableJson({
+    secretEnv: cleanSecretEnv(template?.secretEnv),
+    nodeOptions: OPENCLAW_NODE_OPTIONS,
+  }));
 }
 
 function templateWorkspaceHash(template: OpenClawRuntimeTemplate): string {
@@ -633,6 +637,9 @@ async function createContainer(
     '-e', 'TERM=xterm-256color',
     '-e', `TZ=${process.env.OPENCLAW_TZ ?? process.env.TZ ?? 'UTC'}`,
   ];
+  if (OPENCLAW_NODE_OPTIONS) {
+    envArgs.push('-e', `NODE_OPTIONS=${OPENCLAW_NODE_OPTIONS}`);
+  }
   if (OPENCLAW_GATEWAY_TOKEN) {
     envArgs.push('-e', `OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN}`);
   }
@@ -658,7 +665,7 @@ async function createContainer(
     '--label', `clawscale.channelId=${identity.channelId}`,
     '--label', `clawscale.endUserId=${identity.endUserId}`,
     '--label', `clawscale.backendId=${identity.backendId}`,
-    '--label', `clawscale.secretEnvHash=${shortHash(stableJson(cleanSecretEnv(secretEnv)))}`,
+    '--label', `clawscale.secretEnvHash=${shortHash(stableJson({ secretEnv: cleanSecretEnv(secretEnv), nodeOptions: OPENCLAW_NODE_OPTIONS }))}`,
     '-p', '127.0.0.1::18789',
     '-p', '127.0.0.1::18790',
     '-v', `${stateDir}:/home/node/.openclaw`,

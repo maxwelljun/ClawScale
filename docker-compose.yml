@@ -41,6 +41,7 @@ services:
       OPENCLAW_SHARED_RUNTIME_DEPS: ${OPENCLAW_SHARED_RUNTIME_DEPS:-true}
       OPENCLAW_CHAT_TIMEOUT_MS: ${OPENCLAW_CHAT_TIMEOUT_MS:-600000}
       OPENCLAW_STREAM: ${OPENCLAW_STREAM:-true}
+      OPENCLAW_NODE_OPTIONS: ${OPENCLAW_NODE_OPTIONS:---max-old-space-size=3072}
     env_file:
       - path: .env
         required: false

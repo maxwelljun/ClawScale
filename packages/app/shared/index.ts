@@ -547,7 +547,7 @@ export interface AgentKnowledgeItem {
 export type AgentRuntimeType = 'openclaw' | 'hermass' | 'custom';
 
 export const AGENT_RUNTIME_DESCRIPTORS: Record<AgentRuntimeType, { label: string; imageHint: string }> = {
-  openclaw: { label: 'OpenClaw', imageHint: '1panel/openclaw:2026.3.29' },
+  openclaw: { label: 'OpenClaw', imageHint: '1panel/openclaw:2026.3.28' },
   hermass: { label: 'Hermass', imageHint: 'hermass/hermass:latest' },
   custom: { label: 'Custom Runtime', imageHint: 'custom/runtime:latest' },
 };
